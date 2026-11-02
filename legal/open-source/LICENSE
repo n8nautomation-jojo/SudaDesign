@@ -1,0 +1,55 @@
+# Suda Design Licensing & Distribution Architecture
+
+**Document Status:** DRAFT — PENDING TECHNICAL & LEGAL VERIFICATION  
+**Product:** Suda Design (Android Edition)  
+**Last Updated:** 2026-11-01  
+
+---
+
+## 1. Underlying Open-Source Engine (PhotoCraft)
+
+The underlying codebase of this application incorporates and derives from the **PhotoCraft** image editor engine, developed by the ArtCraft Team and open-source contributors:
+
+- **Upstream Repository:** https://github.com/storytold/photocraft
+- **Upstream Licenses:** Dual-licensed under the **Apache License, Version 2.0** (`LICENSE-APACHE`) or the **MIT License** (`LICENSE-MIT`), at the user's election.
+- **Upstream Copyright:** (c) 2026 ArtCraft Team and PhotoCraft contributors.
+
+Nothing in this document or in the distribution of Suda Design modifies, restricts, supersedes, or limits any rights, freedoms, or permissions granted to recipients under the original MIT or Apache-2.0 licenses with respect to upstream PhotoCraft source code.
+
+---
+
+## 2. Proprietary Brand Assets & Trademarks (Separated from Software Copyright)
+
+In accordance with Section 6 of the Apache License, Version 2.0 (which explicitly states that trademark rights are not granted), the following brand and visual identity elements are **NOT** licensed under MIT or Apache-2.0:
+
+1. **Brand Marks & Trade Names:** "Suda Design", "Sd", "SudaDesign", and associated logos.
+2. **Proprietary Graphical Identity:** The stylized multi-chromatic color-splash "Sd" vector art, splash screens, custom app launcher icons (`ic_launcher`), and trade dress.
+3. **Commercial Identity:** Marketing materials, store descriptions, and distinctive visual presentation.
+
+**Ownership Status:** All rights, title, and interest in and to these trademarks and proprietary visual assets are reserved exclusively by **`INDIVIDUAL_OWNER`** under applicable trademark and copyright laws. They are not assigned to any corporate vehicle until formal incorporation of a company and execution of a written assignment agreement.
+
+Downstream distributors modifying the open-source code are reminded to comply with trademark law and remove proprietary trademarks, logos, and commercial branding to avoid consumer confusion.
+
+---
+
+## 3. Original Modifications & Contributions
+
+- **Scope:** Custom Android GameActivity integrations, JNI bridges, low-latency soft keyboard (IME) input pipelines, mobile responsive layout dialog adaptors, and build packaging configurations.
+- **Authorship:** Authored by `INDIVIDUAL_OWNER`.
+- **Status:** Unverified in formal copyright registries; subject to proof of authorship and clean-room provenance.
+- **Licensing:** Provided in this repository alongside upstream components under permissive open-source terms, reserving trademark rights.
+
+---
+
+## 4. Official Compiled Binary Distribution
+
+Official compiled application binaries distributed via the Google Play Store or authorized channels are provided as free software for personal and commercial creative use, subject to the **End User License Agreement (EULA)** located at `legal/users/EULA.md`. 
+
+The EULA governs the compiled binary artifact and user output ownership, without restricting the underlying open-source source code rights.
+
+---
+
+## 5. Official References & Legal Authorities
+- **Apache License, Version 2.0 (Section 6 - Trademarks):** https://www.apache.org/licenses/LICENSE-2.0
+- **The MIT License:** https://opensource.org/licenses/MIT
+- **USPTO Trademark Basics & Open Source:** https://www.uspto.gov/trademarks

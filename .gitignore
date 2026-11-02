@@ -1,0 +1,52 @@
+# Rust / Cargo
+/target
+target/
+**/target/
+Cargo.lock.orig
+*~
+*.log
+
+# Workspace ignored folders
+/plan/
+/dist
+/corpus
+/log
+/secrets
+/temp
+/book/output
+/craft-fonts
+__pycache__/
+*.py[cod]
+
+# Temporary audit & scratch artifacts
+dependency_inventory.json
+android_tree.txt
+scratch*
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+build/
+**/build/
+.cxx/
+**/src/main/jniLibs/
+local.properties
+
+# Android Studio / IntelliJ / VSCode
+.idea/
+*.iml
+.vscode/
+
+# Signing keys, certificates and release binaries
+*.keystore
+*.jks
+*.key
+*.pem
+signing.properties
+*.apk
+*.aab
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

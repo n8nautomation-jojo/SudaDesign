@@ -1,0 +1,50 @@
+[package]
+name = "photocraft-android"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PhotoCraft on Android (native eframe/wgpu with GameActivity)"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints.rust]
+# Entry point android_main requires unsafe_code = "deny" rather than "forbid"
+# due to #[unsafe(no_mangle)] in Rust 2024 edition.
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "deny"
+
+[dependencies]
+photocraft-engine = { workspace = true }
+photocraft-doc = { workspace = true }
+photocraft-color = { workspace = true }
+photocraft-raster = { workspace = true }
+photocraft-geom = { workspace = true }
+photocraft-compose = { workspace = true }
+photocraft-codecs = { workspace = true }
+photocraft-io = { workspace = true }
+photocraft-format = { workspace = true }
+photocraft-text = { workspace = true }
+photocraft-psd = { workspace = true }
+photocraft-ui-egui = { workspace = true }
+egui = { workspace = true }
+log = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+png = "0.18"
+rayon = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { workspace = true, default-features = false, features = ["wgpu", "android-game-activity", "default_fonts"] }
+winit = { version = "=0.30.13", default-features = false, features = ["android-game-activity"] }
+android_logger = "0.15"
+jni = "0.22"
