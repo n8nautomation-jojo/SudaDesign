@@ -396,7 +396,8 @@ class MainActivity : GameActivity() {
             for (font in assetFonts) {
                 if (!font.endsWith(".ttf") && !font.endsWith(".otf")) continue
                 val targetFile = java.io.File(fontsDir, font)
-                if (!targetFile.exists() || targetFile.length() == 0L) {
+                val assetSize = try { assets.open("fonts/$font").use { it.available().toLong() } } catch (_: Exception) { 0L }
+                if (!targetFile.exists() || targetFile.length() == 0L || (assetSize > 0L && targetFile.length() != assetSize)) {
                     assets.open("fonts/$font").use { input ->
                         java.io.FileOutputStream(targetFile).use { output ->
                             input.copyTo(output)

@@ -59,6 +59,21 @@ fn deflate_bundled_fonts() {
             "Amiri-Bold.ttf",
             "ArefRuqaa-Regular.ttf",
             "Cairo-Variable.ttf",
+            "beIN-Sports-Normal.ttf",
+            "Al-Mateen.ttf",
+            "Dubai-Bold.ttf",
+            "Hacen-Typographer-Bold.ttf",
+            "Hacen-Saudi-Arabia.ttf",
+            "Diwani.ttf",
+            "Thuluth.ttf",
+            "Droid-Arabic-Kufi.ttf",
+            "Droid-Arabic-Naskh.ttf",
+            "Kufyan-Arabic-Regular.otf",
+            "Kufyan-Arabic-Bold.otf",
+            "Montserrat-Arabic-Regular.ttf",
+            "Montserrat-Arabic-Bold.ttf",
+            "GE-SS-Two-Bold.otf",
+            "Frutiger-Arabic-Bold.ttf",
         ] {
             let path = src.join(name);
             println!("cargo::rerun-if-changed={}", path.display());
