@@ -37,12 +37,29 @@ pub static INTER_MEDIUM: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundl
 pub static INTER_SEMIBOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Inter-SemiBold.ttf")));
 pub static JETBRAINS_MONO_REGULAR: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("JetBrainsMono-Regular.ttf")));
 
+pub static TAJAWAL_REGULAR: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Tajawal-Regular.ttf")));
+pub static TAJAWAL_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Tajawal-Bold.ttf")));
+pub static AMIRI_REGULAR: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Amiri-Regular.ttf")));
+pub static AMIRI_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Amiri-Bold.ttf")));
+pub static AREF_RUQAA_REGULAR: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("ArefRuqaa-Regular.ttf")));
+pub static CAIRO_VARIABLE: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Cairo-Variable.ttf")));
+
 /// Fonts shipped with PhotoCraft (OFL; licences in `assets/fonts`).
 pub static BUNDLED: [(&str, &LazyLock<Vec<u8>>); 4] = [
     ("Inter-Regular.ttf", &INTER_REGULAR),
     ("Inter-Medium.ttf", &INTER_MEDIUM),
     ("Inter-SemiBold.ttf", &INTER_SEMIBOLD),
     ("JetBrainsMono-Regular.ttf", &JETBRAINS_MONO_REGULAR),
+];
+
+/// Bundled Arabic fonts shipped with Suda Design (OFL-1.1; licences in `assets/fonts`).
+pub static BUNDLED_ARABIC: [(&str, &LazyLock<Vec<u8>>); 6] = [
+    ("Tajawal-Regular.ttf", &TAJAWAL_REGULAR),
+    ("Tajawal-Bold.ttf", &TAJAWAL_BOLD),
+    ("Amiri-Regular.ttf", &AMIRI_REGULAR),
+    ("Amiri-Bold.ttf", &AMIRI_BOLD),
+    ("ArefRuqaa-Regular.ttf", &AREF_RUQAA_REGULAR),
+    ("Cairo-Variable.ttf", &CAIRO_VARIABLE),
 ];
 
 /// Inflated fonts are bounded (the largest is 0.42 MB), so corrupt data can't exhaust memory.
@@ -254,6 +271,9 @@ impl FontDb {
             shared: false,
         };
         for (_, bytes) in BUNDLED {
+            db.register_static_font(bytes.as_slice());
+        }
+        for (_, bytes) in BUNDLED_ARABIC {
             db.register_static_font(bytes.as_slice());
         }
         // The optional craft-fonts (empty unless built with CRAFT_FONTS_DIR; always empty on
@@ -1113,6 +1133,22 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/fonts");
         for (name, bytes) in super::BUNDLED {
             assert_eq!(bytes.as_slice(), std::fs::read(dir.join(name)).unwrap(), "{name}");
+        }
+        for (name, bytes) in super::BUNDLED_ARABIC {
+            assert_eq!(bytes.as_slice(), std::fs::read(dir.join(name)).unwrap(), "{name}");
+        }
+    }
+
+    /// Bundled Arabic fonts cover Arabic alphabet and diacritical marks.
+    #[test]
+    fn bundled_arabic_fonts_cover_arabic() {
+        use skrifa::MetadataProvider;
+        let arabic = "ابتثجحخدذرزسشصضطظعغفقكلمنهويءآأؤإئًٌٍَُِّْـ";
+        for (name, bytes) in super::BUNDLED_ARABIC {
+            let font = skrifa::FontRef::new(bytes.as_slice()).expect("bundled arabic font parses");
+            let cmap = font.charmap();
+            let missing: String = arabic.chars().filter(|c| cmap.map(*c).is_none_or(|g| g.to_u32() == 0)).collect();
+            assert!(missing.is_empty(), "{name} lacks Arabic glyphs: {missing}");
         }
     }
 

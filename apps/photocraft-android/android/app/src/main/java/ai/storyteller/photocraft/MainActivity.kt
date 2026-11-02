@@ -126,6 +126,7 @@ class MainActivity : GameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         instance = this
+        unpackBundledFonts()
 
         try {
             nativeInit()
@@ -378,6 +379,34 @@ class MainActivity : GameActivity() {
                 }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * Unpack Arabic fonts bundled in assets/fonts to internal storage files/fonts
+     * so that the native text engine can discover them during filesystem scans.
+     */
+    private fun unpackBundledFonts() {
+        try {
+            val fontsDir = java.io.File(filesDir, "fonts")
+            if (!fontsDir.exists()) {
+                fontsDir.mkdirs()
+            }
+            val assetFonts = assets.list("fonts") ?: return
+            for (font in assetFonts) {
+                if (!font.endsWith(".ttf") && !font.endsWith(".otf")) continue
+                val targetFile = java.io.File(fontsDir, font)
+                if (!targetFile.exists() || targetFile.length() == 0L) {
+                    assets.open("fonts/$font").use { input ->
+                        java.io.FileOutputStream(targetFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    android.util.Log.i("SudaDesign", "Unpacked bundled font: $font (${targetFile.length()} bytes)")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SudaDesign", "Error unpacking bundled fonts: $e")
         }
     }
 

@@ -874,6 +874,18 @@ pub fn install_fonts_with(ctx: &egui::Context, cjk: crate::cjk_fonts::Sources) {
     if let Some(mono) = mono {
         fonts.families.entry(FontFamily::Monospace).or_default().insert(0, mono);
     }
+    // Bundled Arabic fonts (Tajawal, Cairo, Amiri, Aref Ruqaa): registered into the static stack
+    // as UI fallbacks so Arabic text (menus, dialogs, layers, status) renders natively without missing glyphs.
+    let tajawal = add(&mut fonts, "Tajawal", photocraft_text::fonts::TAJAWAL_REGULAR.as_slice());
+    let _tajawal_bold = add(&mut fonts, "Tajawal-Bold", photocraft_text::fonts::TAJAWAL_BOLD.as_slice());
+    let amiri = add(&mut fonts, "Amiri", photocraft_text::fonts::AMIRI_REGULAR.as_slice());
+    let _amiri_bold = add(&mut fonts, "Amiri-Bold", photocraft_text::fonts::AMIRI_BOLD.as_slice());
+    let ruqaa = add(&mut fonts, "ArefRuqaa", photocraft_text::fonts::AREF_RUQAA_REGULAR.as_slice());
+    let cairo = add(&mut fonts, "Cairo", photocraft_text::fonts::CAIRO_VARIABLE.as_slice());
+    for f in [&tajawal, &cairo, &amiri, &ruqaa].into_iter().flatten() {
+        fonts.families.entry(FontFamily::Proportional).or_default().push(f.clone());
+        fonts.families.entry(FontFamily::Monospace).or_default().push(f.clone());
+    }
     // The optional craft-fonts input carries Japanese, Simplified Chinese, Korean, Arabic, Thai and
     // other faces. They are not registered into this static stack: `cjk_fonts` installs a
     // per-character font provider for them, so a broad Simplified Chinese face is not put in the
