@@ -47,6 +47,8 @@ mod start_screen;
 mod strokes;
 mod tabs;
 mod textures;
+pub mod gesture_state;
+pub mod progressive_render;
 pub(super) mod tile_overlay;
 pub(super) mod tool_cursor;
 pub mod tool_feedback;
@@ -560,15 +562,25 @@ struct CanvasNavigationInput<'a> {
 }
 
 fn update_canvas_navigation(app: &mut PhotocraftApp, view: &mut View, input: CanvasNavigationInput<'_>) {
-    // Suppress canvas navigation zooming/panning when an on-canvas element transformation,
-    // box handle drag, or tool stroke is actively in progress, so touch gestures scale the
-    // element itself rather than accidentally zooming or panning the whole viewport.
-    let active_element_gesture = app.transform_preview.as_ref().is_some_and(|pv| pv.is_dragging())
-        || app.ui.text_edit.as_ref().is_some_and(|ed| ed.resize.is_some() || ed.dragging)
-        || app.ui.artboard_tool.drag.is_some()
-        || app.drag.is_some();
-    if active_element_gesture {
-        return;
+    // If multi-touch (pinch/pan) is active on a touchscreen, cancel any premature
+    // single-finger stroke that was started a few milliseconds before the second finger landed.
+    if input.ctx.input(|i| i.multi_touch().is_some()) {
+        if app.drag.is_some() {
+            app.drag = None;
+            app.live_stroke = None;
+            app.press_stroke = false;
+        }
+    } else {
+        // Suppress canvas navigation zooming/panning when an on-canvas element transformation,
+        // box handle drag, or tool stroke is actively in progress, so touch gestures scale the
+        // element itself rather than accidentally zooming or panning the whole viewport.
+        let active_element_gesture = app.transform_preview.as_ref().is_some_and(|pv| pv.is_dragging())
+            || app.ui.text_edit.as_ref().is_some_and(|ed| ed.resize.is_some() || ed.dragging)
+            || app.ui.artboard_tool.drag.is_some()
+            || app.drag.is_some();
+        if active_element_gesture {
+            return;
+        }
     }
 
     // Navigation (wheel_nav.rs): scroll pans (⇧ or ⌘/Ctrl sideways); pinch and ⌥-scroll zoom around the pointer.
@@ -697,7 +709,7 @@ fn handle_dialog_canvas_input(app: &mut PhotocraftApp, input: DialogCanvasInput<
     let held_zoom =
         !input.middle && !curve_point_with_hand && matches!(input.temporary, Some(crate::hold_keys::Temporary::ZoomIn | crate::hold_keys::Temporary::ZoomOut));
     if held_zoom {
-        let alt = input.ctx.input(|i| i.modifiers.alt);
+        let alt = crate::workspace_ui::sticky_mods(app, input.ctx.input(|i| i.modifiers)).alt;
         if input.free_hover {
             input.ctx.set_cursor_icon(crate::tool_cursor::zoom(input.ctx, zoom_out(alt)));
         }
@@ -796,7 +808,7 @@ fn handle_primary_canvas_input(app: &mut PhotocraftApp, ui: &mut egui::Ui, view:
     let tool = input.tool;
     let idx = input.idx;
     let under_dialog = input.under_dialog;
-    let mods = ui.input(|i| i.modifiers);
+    let mods = crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers));
     // An ⌥-click the window manager took never arrives; say so (alt_grab.rs).
     crate::alt_grab::watch(app, ctx, egui::Id::unique(("pc-alt-grab", idx)), rect, tool, !under_dialog);
     // Tools follow the left button; the right one opens the Brush Preset picker or erases
@@ -945,7 +957,7 @@ fn handle_canvas_tool_navigation(
     // Animated Zoom: a Zoom press held still zooms continuously (zoom_hold.rs); while it does,
     // it owns the press: no scrub, and its release is no click step.
     if tool == Tool::Zoom && !transform_owns_pointer {
-        let out = zoom_out(ui.input(|i| i.modifiers.alt));
+        let out = zoom_out(crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)).alt);
         let on_canvas = !input.under_dialog && !over_compass && response.is_pointer_button_down_on();
         let hold = crate::zoom_hold::hold_id(idx, primary, ctx.viewport_id());
         if crate::zoom_hold::update(ctx, view, xf, app.session.prefs().general.animated_zoom, out, ppp, on_canvas, hold) {
@@ -986,7 +998,24 @@ fn handle_canvas_tool_stroke(
     // and a click (or a long press that never moved) just ends it.
     let physical_right = app.services.right_button_down.as_ref().is_some_and(|f| f());
     let right_down = ui.input(|i| i.pointer.secondary_down()) || physical_right;
+    let is_multi_touch = ui.input(|i| i.multi_touch().is_some());
+    if is_multi_touch && app.drag.is_some() {
+        app.drag = None;
+        app.live_stroke = None;
+        app.press_stroke = false;
+    }
+    // On mobile screens, tapping the canvas automatically dismisses any open slide-over dock drawer,
+    // instantly reclaiming 100% full screen width for uninterrupted drawing and editing.
+    let is_mobile_viewport = crate::dialogs::is_mobile_screen(ctx);
+    if is_mobile_viewport
+        && ui.input(|i| i.pointer.primary_pressed())
+        && response.is_pointer_button_down_on()
+        && crate::panels::is_any_dock_expanded(app)
+    {
+        crate::panels::dismiss_mobile_dock(app);
+    }
     if strokes_live(tool)
+        && !is_multi_touch
         && !right_down
         && app.drag.is_none()
         && response.is_pointer_button_down_on()
@@ -996,7 +1025,8 @@ fn handle_canvas_tool_stroke(
     {
         let d = xf.to_doc(p);
         // The press's own modifiers: a ⇧ that arrives with the click still connects the line.
-        let press_mods = ui.input(|i| pointer_button_modifiers(&i.events, PointerButton::Primary)).unwrap_or(mods);
+        let raw_press_mods = ui.input(|i| pointer_button_modifiers(&i.events, PointerButton::Primary)).unwrap_or(mods);
+        let press_mods = crate::workspace_ui::sticky_mods(app, raw_press_mods);
         tool_event(app, ToolEvent::Down { x: d[0], y: d[1], pressure: app.stylus.pressure() }, press_mods);
         app.press_stroke = app.drag.is_some();
     }
@@ -1433,8 +1463,8 @@ fn draw_default_tool_cursor(app: &mut PhotocraftApp, ui: &mut egui::Ui, input: &
     let output = input.output;
     let zoom_out = input.zoom_out;
 
-    let alt = ui.input(|i| i.modifiers.alt);
-    if !resizing && !alt && !app.ui.shell.sticky_alt {
+    let alt = crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)).alt;
+    if !resizing && !alt {
         draw_clone_preview(app, painter, xf, xf.to_doc(p), output);
     }
     // The Type tool over a path shows Photoshop's area-type or type-on-a-path pointer (#218).
@@ -1901,7 +1931,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     let reposition = crate::hold_keys::reposition_held(app, &ctx);
     crate::crop_ui::set_space(app, reposition);
     // ⌘ (Ctrl) held: a temporary Straighten with the Crop tool.
-    crate::crop_straighten::set_held(app, !ctx.text_edit_focused() && ui.input(|i| i.modifiers.command));
+    crate::crop_straighten::set_held(app, !ctx.text_edit_focused() && crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)).command);
     // A tab switched this frame drops the other document's pending crop (#1918).
     crate::crop_ui::cancel_stale(app);
     crate::crop_ui::ensure_frame(app);

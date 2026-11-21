@@ -40,10 +40,14 @@ mod budget;
 mod callback;
 mod doc_textures;
 mod perf;
+pub mod pool_budget;
 mod resources;
 mod setup;
 mod shaders;
 mod texels;
+pub mod viewport_pool;
+
+pub use viewport_pool::ViewportHint;
 
 #[cfg(all(test, target_os = "linux"))]
 use budget::nvidia_video_memory;
@@ -166,6 +170,8 @@ pub struct GpuCanvas {
     /// Camera Raw's preview pass, built the first time the dialog asks (#6419).
     camera_raw: crate::camera_raw_gpu::Slot,
     camera_raw_started: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Viewport hint for dynamic tile pooling on large canvases.
+    viewport: std::sync::Arc<std::sync::Mutex<Option<viewport_pool::ViewportHint>>>,
 }
 
 /// Whether `regenerate_mips` builds each level in a scratch texture and copies it back: on
@@ -223,7 +229,17 @@ impl GpuCanvas {
             rs.target_format,
             vram.map_or_else(|| "unknown".to_owned(), |b| format!("{} MB", b >> 20))
         );
-        Self { rs: rs.clone(), tile, high, health, vram, canvas_budget: budget, camera_raw: Default::default(), camera_raw_started: Default::default() }
+        Self {
+            rs: rs.clone(),
+            tile,
+            high,
+            health,
+            vram,
+            canvas_budget: budget,
+            camera_raw: Default::default(),
+            camera_raw_started: Default::default(),
+            viewport: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        }
     }
 
     /// The device's health flag (shared with the wgpu compositor and the paint callback).
@@ -352,10 +368,38 @@ impl GpuCanvas {
         self.canvas_budget.store(bytes, Ordering::Relaxed);
     }
 
+    /// Update the current visible viewport hint for this canvas (used to scope GPU tile allocations).
+    pub fn update_viewport(&self, center: [f32; 2], zoom: f32, screen_px: [u32; 2]) {
+        let mut vp = self.viewport.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *vp = viewport_pool::ViewportHint::from_view(center, zoom, screen_px);
+    }
+
+    /// The current viewport hint, if one was provided.
+    pub fn viewport_hint(&self) -> Option<viewport_pool::ViewportHint> {
+        *self.viewport.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Whether `doc`'s display textures fit [`canvas_budget`]; when they don't, nothing is
     /// created for it and it is drawn on the CPU canvas.
     pub fn fits_canvas(&self, doc: &photocraft_doc::Document) -> bool {
-        self.canvas_fit(doc).is_some_and(|(bytes, budget)| bytes <= budget)
+        if let Some((bytes, budget)) = self.canvas_fit(doc) {
+            if bytes <= budget {
+                return true;
+            }
+            if pool_budget::should_use_viewport_pool(bytes, budget) {
+                let size = [doc.size.width, doc.size.height];
+                let bpp = texel_bytes(self.format_for(doc.depth, size));
+                let pool_bytes = self.viewport
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .map_or_else(
+                        || pool_budget::default_pool_bytes(self.tile, bpp),
+                        |hint| hint.pool_bytes(self.tile, bpp, size),
+                    );
+                return pool_bytes <= budget;
+            }
+        }
+        false
     }
 
     /// The bytes `doc`'s display textures would take and [`canvas_budget`] (`None` without a GPU
@@ -510,8 +554,22 @@ impl GpuCanvas {
         let (device, queue) = (&self.rs.device, &self.rs.queue);
         let mut renderer = self.rs.renderer.write();
         let Some(res) = renderer.callback_resources.get_mut::<Resources>() else { return };
-        if res.docs.get(&doc).is_none_or(|d| d.size != size || d.format != format) {
-            let Some(tex) = DocTextures::new(device, res, size, self.tile, format) else {
+        let bpp = texel_bytes(format);
+        let full_bytes = canvas_texture_bytes(size, self.tile, bpp);
+        let budget = res.canvas_budget.load(Ordering::Relaxed);
+        let clip = if pool_budget::should_use_viewport_pool(full_bytes, budget) {
+            self.viewport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .map(|hint| hint.doc_clip(self.tile, size))
+        } else {
+            None
+        };
+        let reclip = clip.is_some() && res.docs.get(&doc).is_some_and(|d| d.clip != clip);
+        if res.docs.get(&doc).is_none_or(|d| d.size != size || d.format != format) || reclip {
+            let tex = DocTextures::new_clipped(device, res, size, self.tile, format, clip)
+                .or_else(|| DocTextures::new(device, res, size, self.tile, format));
+            let Some(tex) = tex else {
                 res.docs.remove(&doc);
                 return;
             };
@@ -643,8 +701,22 @@ impl GpuCanvas {
                 return Err(photocraft_gpu::Unsupported(OVER_BUDGET.into()));
             }
         }
-        if fresh {
-            let Some(tex) = DocTextures::new(device, res, size, self.tile, format) else {
+        let bpp = texel_bytes(format);
+        let full_bytes = canvas_texture_bytes(size, self.tile, bpp);
+        let budget = res.canvas_budget.load(Ordering::Relaxed);
+        let clip = if pool_budget::should_use_viewport_pool(full_bytes, budget) {
+            self.viewport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .map(|hint| hint.doc_clip(self.tile, size))
+        } else {
+            None
+        };
+        let reclip = clip.is_some() && res.docs.get(&key).is_some_and(|d| d.clip != clip);
+        if fresh || reclip {
+            let tex = DocTextures::new_clipped(device, res, size, self.tile, format, clip)
+                .or_else(|| DocTextures::new(device, res, size, self.tile, format));
+            let Some(tex) = tex else {
                 res.docs.remove(&key);
                 res.compositor = Some(comp);
                 return Err(photocraft_gpu::Unsupported(OVER_CANVAS_BUDGET.into()));
@@ -858,8 +930,22 @@ impl GpuCanvas {
         let format = self.format_for(doc.depth, size);
         let mut renderer = self.rs.renderer.write();
         let res = renderer.callback_resources.get_mut::<Resources>()?;
-        if res.docs.get(&key).is_none_or(|d| d.size != size || d.format != format) {
-            let Some(tex) = DocTextures::new(&self.rs.device, res, size, self.tile, format) else {
+        let bpp = texel_bytes(format);
+        let full_bytes = canvas_texture_bytes(size, self.tile, bpp);
+        let budget = res.canvas_budget.load(Ordering::Relaxed);
+        let clip = if pool_budget::should_use_viewport_pool(full_bytes, budget) {
+            self.viewport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .map(|hint| hint.doc_clip(self.tile, size))
+        } else {
+            None
+        };
+        let reclip = clip.is_some() && res.docs.get(&key).is_some_and(|d| d.clip != clip);
+        if res.docs.get(&key).is_none_or(|d| d.size != size || d.format != format) || reclip {
+            let tex = DocTextures::new_clipped(&self.rs.device, res, size, self.tile, format, clip)
+                .or_else(|| DocTextures::new(&self.rs.device, res, size, self.tile, format));
+            let Some(tex) = tex else {
                 res.docs.remove(&key);
                 return None;
             };

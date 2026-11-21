@@ -9,7 +9,8 @@ pub fn style_spectrum_popup_menu(ui: &mut Ui) {
     // dropped the highlight (#4602). Padding stays inside the row, which is the hit target.
     ui.spacing_mut().item_spacing.y = 0.0;
     if crate::dialogs::is_mobile_screen(ui.ctx()) {
-        ui.spacing_mut().button_padding = vec2(14.0, 9.0);
+        ui.spacing_mut().button_padding = vec2(16.0, 11.0);
+        ui.spacing_mut().interact_size.y = ui.spacing_mut().interact_size.y.max(38.0);
     } else if t.pro {
         ui.spacing_mut().button_padding = vec2(10.0, 4.0);
     }

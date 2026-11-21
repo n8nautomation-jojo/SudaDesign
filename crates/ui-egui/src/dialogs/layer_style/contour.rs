@@ -342,7 +342,8 @@ pub(super) fn editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Str
     let mut new_clicked = false;
     let mut commit_name = false;
     let mut preset: Option<String> = None;
-    let _modal = egui::Modal::new(mem.with("modal")).show(&ctx, |ui| {
+    let area = crate::safe_area::modal_area(&ctx, mem.with("modal"));
+    let _modal = egui::Modal::new(mem.with("modal")).area(area).show(&ctx, |ui| {
         ui.label(RichText::new(tl!("Contour Editor")).font(crate::theme::semibold(14.0)).color(t.text));
         ui.add_space(6.0);
         ui.horizontal_top(|ui| {

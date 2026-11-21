@@ -1014,8 +1014,9 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
         .collect();
     let chosen = get_s(f, "__preset", "");
 
-    let avail_w = ui.available_width();
-    let screen_h = ui.ctx().content_rect().height();
+    let safe = crate::safe_area::safe_rect(ui.ctx());
+    let avail_w = ui.available_width().min(safe.width());
+    let screen_h = safe.height();
     let is_compact_w = avail_w < 550.0;
     let is_compact_h = screen_h < 480.0;
 

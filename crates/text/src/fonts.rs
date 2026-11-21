@@ -44,22 +44,6 @@ pub static AMIRI_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled
 pub static AREF_RUQAA_REGULAR: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("ArefRuqaa-Regular.ttf")));
 pub static CAIRO_VARIABLE: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Cairo-Variable.ttf")));
 
-pub static BEIN_SPORTS: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("beIN-Sports-Normal.ttf")));
-pub static AL_MATEEN: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Al-Mateen.ttf")));
-pub static DUBAI_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Dubai-Bold.ttf")));
-pub static HACEN_TYPOGRAPHER_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Hacen-Typographer-Bold.ttf")));
-pub static HACEN_SAUDI_ARABIA: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Hacen-Saudi-Arabia.ttf")));
-pub static DIWANI: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Diwani.ttf")));
-pub static THULUTH: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Thuluth.ttf")));
-pub static DROID_ARABIC_KUFI: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Droid-Arabic-Kufi.ttf")));
-pub static DROID_ARABIC_NASKH: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Droid-Arabic-Naskh.ttf")));
-pub static KUFYAN_REGULAR: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Kufyan-Arabic-Regular.otf")));
-pub static KUFYAN_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Kufyan-Arabic-Bold.otf")));
-pub static MONTSERRAT_ARABIC_REGULAR: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Montserrat-Arabic-Regular.ttf")));
-pub static MONTSERRAT_ARABIC_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Montserrat-Arabic-Bold.ttf")));
-pub static GE_SS_TWO_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("GE-SS-Two-Bold.otf")));
-pub static FRUTIGER_ARABIC_BOLD: LazyLock<Vec<u8>> = LazyLock::new(|| inflate_font(bundled_font!("Frutiger-Arabic-Bold.ttf")));
-
 /// Fonts shipped with PhotoCraft (OFL; licences in `assets/fonts`).
 pub static BUNDLED: [(&str, &LazyLock<Vec<u8>>); 4] = [
     ("Inter-Regular.ttf", &INTER_REGULAR),
@@ -68,29 +52,14 @@ pub static BUNDLED: [(&str, &LazyLock<Vec<u8>>); 4] = [
     ("JetBrainsMono-Regular.ttf", &JETBRAINS_MONO_REGULAR),
 ];
 
-/// Bundled Arabic fonts shipped with Suda Design (licences in `assets/fonts`).
-pub static BUNDLED_ARABIC: [(&str, &LazyLock<Vec<u8>>); 21] = [
+/// Bundled Arabic fonts shipped with Suda Design (OFL; licences in `assets/fonts`).
+pub static BUNDLED_ARABIC: [(&str, &LazyLock<Vec<u8>>); 6] = [
     ("Tajawal-Regular.ttf", &TAJAWAL_REGULAR),
     ("Tajawal-Bold.ttf", &TAJAWAL_BOLD),
     ("Amiri-Regular.ttf", &AMIRI_REGULAR),
     ("Amiri-Bold.ttf", &AMIRI_BOLD),
     ("ArefRuqaa-Regular.ttf", &AREF_RUQAA_REGULAR),
     ("Cairo-Variable.ttf", &CAIRO_VARIABLE),
-    ("beIN-Sports-Normal.ttf", &BEIN_SPORTS),
-    ("Al-Mateen.ttf", &AL_MATEEN),
-    ("Dubai-Bold.ttf", &DUBAI_BOLD),
-    ("Hacen-Typographer-Bold.ttf", &HACEN_TYPOGRAPHER_BOLD),
-    ("Hacen-Saudi-Arabia.ttf", &HACEN_SAUDI_ARABIA),
-    ("Diwani.ttf", &DIWANI),
-    ("Thuluth.ttf", &THULUTH),
-    ("Droid-Arabic-Kufi.ttf", &DROID_ARABIC_KUFI),
-    ("Droid-Arabic-Naskh.ttf", &DROID_ARABIC_NASKH),
-    ("Kufyan-Arabic-Regular.otf", &KUFYAN_REGULAR),
-    ("Kufyan-Arabic-Bold.otf", &KUFYAN_BOLD),
-    ("Montserrat-Arabic-Regular.ttf", &MONTSERRAT_ARABIC_REGULAR),
-    ("Montserrat-Arabic-Bold.ttf", &MONTSERRAT_ARABIC_BOLD),
-    ("GE-SS-Two-Bold.otf", &GE_SS_TWO_BOLD),
-    ("Frutiger-Arabic-Bold.ttf", &FRUTIGER_ARABIC_BOLD),
 ];
 
 /// Inflated fonts are bounded (the largest is 0.42 MB), so corrupt data can't exhaust memory.

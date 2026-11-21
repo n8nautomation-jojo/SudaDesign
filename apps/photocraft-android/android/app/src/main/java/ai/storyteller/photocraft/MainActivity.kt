@@ -6,7 +6,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.text.InputType
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
@@ -46,6 +50,33 @@ class MainActivity : GameActivity() {
         /** Volatile reference so Rust JNI helpers can reach the running activity. */
         @Volatile
         var instance: MainActivity? = null
+
+        /**
+         * Called from Rust or UI to explicitly show the Android system soft keyboard.
+         */
+        @JvmStatic
+        fun showSoftKeyboard() {
+            instance?.runOnUiThread {
+                val imm = instance?.getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+                instance?.mSurfaceView?.let { view ->
+                    view.requestFocus()
+                    imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
+        }
+
+        /**
+         * Called from Rust or UI to explicitly hide the Android system soft keyboard.
+         */
+        @JvmStatic
+        fun hideSoftKeyboard() {
+            instance?.runOnUiThread {
+                val imm = instance?.getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+                instance?.mSurfaceView?.let { view ->
+                    imm?.hideSoftInputFromWindow(view.windowToken, 0)
+                }
+            }
+        }
 
         /**
          * Called from Rust (via JNI) to open the Android system file picker.
@@ -120,6 +151,28 @@ class MainActivity : GameActivity() {
     }
 
     // -----------------------------------------------------------------------
+    // Surface & Input Configuration
+    // -----------------------------------------------------------------------
+
+    /**
+     * Override surface view creation to configure the IME InputConnection.
+     * Crucially forces [EditorInfo.IME_FLAG_NO_EXTRACT_UI] and [EditorInfo.IME_FLAG_NO_FULLSCREEN]
+     * so that Android never switches to fullscreen extract mode in landscape orientation.
+     * This keeps the design canvas 100% visible beneath/beside the native keyboard.
+     */
+    override fun createSurfaceView(): InputEnabledSurfaceView {
+        return object : InputEnabledSurfaceView(this) {
+            override fun onCreateInputConnection(outAttrs: EditorInfo): com.google.androidgamesdk.gametextinput.InputConnection? {
+                val ic = super.onCreateInputConnection(outAttrs)
+                outAttrs.imeOptions = outAttrs.imeOptions or
+                    EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+                    EditorInfo.IME_FLAG_NO_FULLSCREEN
+                return ic
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Lifecycle
     // -----------------------------------------------------------------------
 
@@ -127,6 +180,17 @@ class MainActivity : GameActivity() {
         super.onCreate(savedInstanceState)
         instance = this
         unpackBundledFonts()
+
+        // Force IME to never extract or fullscreen in landscape
+        try {
+            setImeEditorInfoFields(
+                InputType.TYPE_CLASS_TEXT,
+                EditorInfo.IME_ACTION_NONE,
+                EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("SudaDesign", "setImeEditorInfoFields warning: $e")
+        }
 
         try {
             nativeInit()

@@ -72,7 +72,8 @@ pub(crate) use color::{hsva_color32, hsva_srgb, srgb_bytes};
 #[cfg(test)]
 pub(crate) use dock::DOCK_MIN_WIDTH;
 pub(crate) use dock::{canvas_panel, dock_body, dock_width_id, dock_width_range};
-pub use dock::{dock_area, request_dock_width};
+pub use dock::{dismiss_mobile_dock, dock_area, is_any_dock_expanded, request_dock_width};
+pub use layers::mobile_layers_drawer;
 #[cfg(test)]
 use history::history;
 #[cfg(test)]

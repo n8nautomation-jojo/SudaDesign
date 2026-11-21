@@ -364,7 +364,11 @@ impl Ex {
         }
         let lfx2 = match effects_unchanged(l) {
             Some(true) | None if fx.psd_raw.is_some() => fx.psd_raw.as_ref().map(|r| r.to_vec()),
-            _ => (!fx.items.is_empty()).then(|| crate::effects_map::write_lfx2(fx.enabled, &fx.items)),
+            _ => (!fx.items.is_empty()).then(|| {
+                let mut d = crate::effects_map::write_lfx2(fx.enabled, &fx.items);
+                d.resize(d.len().next_multiple_of(4), 0);
+                d
+            }),
         };
         if let Some(d) = lfx2 {
             let key = if l.is_group() { *b"lfxs" } else { *b"lfx2" };
@@ -515,7 +519,12 @@ impl Ex {
                 let idx = self.text_index.get(&l.id).copied().unwrap_or(0);
                 let rewrite = styled.as_ref().or(generated.as_ref()).or_else(|| src.filter(|d| photocraft_text::psd::text_index(d.as_slice()) != Some(idx)));
                 let fresh = rewrite.and_then(|d| photocraft_text::psd::set_text_index(d.as_slice(), idx)).map(std::sync::Arc::new);
-                set_principal(&mut raw, &[b"TySh"], fresh.as_ref().or(styled.as_ref().or(src)));
+                let chosen = fresh.or(styled).or_else(|| generated.clone()).or_else(|| t.psd_raw.clone());
+                let mut data = chosen.map(|d| (*d).clone());
+                if let Some(d) = data.as_mut().filter(|d| t.psd_raw.is_none() || d.len() % 4 != 0) {
+                    d.resize(d.len().next_multiple_of(4), 0);
+                }
+                set_principal(&mut raw, &[b"TySh"], data.map(std::sync::Arc::new).as_ref());
                 if !raw.iter().any(|(k, _)| k == b"TySh") {
                     self.warnings.push(format!("layer \"{}\": text layer written as pixels (no TySh data)", l.name));
                 }
@@ -591,7 +600,11 @@ impl Ex {
             crate::comps_map::set_cmls(&mut raw, crate::comps_map::write_cmls(comps, last.as_ref(), l, id));
         }
         self.layer_xmp_block(l, &mut raw);
-        regenerated.into_iter().chain(raw).map(|(k, d)| TaggedBlock::new(k, d)).collect()
+        let regenerated = regenerated.into_iter().map(|(k, mut d)| {
+            d.resize(d.len().next_multiple_of(4), 0);
+            TaggedBlock::new(k, d)
+        });
+        regenerated.chain(raw.into_iter().map(|(k, d)| TaggedBlock::new(k, d))).collect()
     }
 
     /// Writes the layer's XMP packet into its `shmd` block (created when it has none). Import
@@ -617,7 +630,8 @@ impl Ex {
             (None, None) => {}
             (Some(vm), Some(i)) if crate::vector_map::vector_mask_block_matches(&raw[i].1, vm, w, h) => {}
             (Some(vm), pos) => {
-                let data = crate::vector_map::vector_mask_bytes(vm, w, h);
+                let mut data = crate::vector_map::vector_mask_bytes(vm, w, h);
+                data.resize(data.len().next_multiple_of(4), 0);
                 match pos {
                     Some(i) => raw[i].1 = data,
                     None => raw.push((*b"vmsk", data)),

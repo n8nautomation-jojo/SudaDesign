@@ -165,6 +165,11 @@ pub(crate) fn convert_tile(surface: &Surface, tile: Option<&Arc<Tile>>, kind: Te
     {
         return out;
     }
+    if let (Some(t), TexKind::Rgba8 | TexKind::Rgba8Direct) = (tile, kind)
+        && let Some(out) = cmyk8_to_rgba8(&fmt, t.bytes())
+    {
+        return out;
+    }
     convert_rows(surface, tile, kind, c.rect())
 }
 
@@ -278,6 +283,41 @@ pub(crate) fn rgb_gray32_to_f16(fmt: &PixelFormat, bytes: &[u8]) -> Option<Vec<u
         out.extend_from_slice(&g);
         out.extend_from_slice(&b);
         out.extend_from_slice(&a);
+    }
+    Some(out)
+}
+
+/// Direct zero-alloc conversion from 8-bit CMYK tile bytes to RGBA8 texels.
+/// Bypasses the 1 MB `Vec<f32>` allocation and floating-point conversion churn.
+pub(crate) fn cmyk8_to_rgba8(fmt: &PixelFormat, bytes: &[u8]) -> Option<Vec<u8>> {
+    use photocraft_color::{ColorMode, SampleType};
+    if fmt.mode != ColorMode::Cmyk || fmt.sample != SampleType::U8 {
+        return None;
+    }
+    let n = (TILE_SIZE * TILE_SIZE) as usize;
+    let ch = fmt.channels();
+    if bytes.len() != n * ch {
+        return None;
+    }
+    let mut out = Vec::with_capacity(n * 4);
+    let mut last_ink = [255u8; 4];
+    let mut last_rgb = [0u8; 4];
+    let has_alpha = fmt.alpha && ch > 4;
+
+    for px in bytes.chunks_exact(ch) {
+        let ink = [px[0], px[1], px[2], px[3]];
+        let alpha = if has_alpha { px[4] } else { 255 };
+        if ink == last_ink {
+            out.extend_from_slice(&[last_rgb[0], last_rgb[1], last_rgb[2], alpha]);
+        } else {
+            let rgb = photocraft_color::convert::cmyk_to_rgb(ink.map(|v| v as f32 / 255.0));
+            let r = (rgb[0].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            let g = (rgb[1].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            let b = (rgb[2].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            last_ink = ink;
+            last_rgb = [r, g, b, 255];
+            out.extend_from_slice(&[r, g, b, alpha]);
+        }
     }
     Some(out)
 }

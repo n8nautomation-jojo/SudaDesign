@@ -157,6 +157,8 @@ pub(super) struct DocTextures {
     pub(super) size: [u32; 2],
     pub(super) format: wgpu::TextureFormat,
     pub(super) tiles: Vec<Tile>,
+    /// Optional viewport clip rect in document pixels [x0, y0, x1, y1].
+    pub(super) clip: Option<[u32; 4]>,
 }
 
 pub(super) struct Tile {

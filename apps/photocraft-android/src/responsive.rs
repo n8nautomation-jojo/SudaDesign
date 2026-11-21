@@ -192,19 +192,12 @@ impl ResponsiveState {
             let touch_dock_w = (screen_size.x * 0.85).clamp(240.0, 340.0);
             photocraft_ui_egui::panels::request_dock_width(ctx, touch_dock_w);
 
-            if profile == ScreenProfile::PhonePortrait {
-                // In phone portrait, collapse dock groups by default so the canvas begins with 100% full screen width!
-                app.ui.dock.set_collapsed(Group::Color, true);
-                app.ui.dock.set_collapsed(Group::Properties, true);
-                app.ui.dock.set_collapsed(Group::Layers, true);
-                self.active_dock_group = None;
-            } else {
-                // In phone landscape, keep Layers open in accordion
-                app.ui.dock.set_collapsed(Group::Color, true);
-                app.ui.dock.set_collapsed(Group::Properties, true);
-                app.ui.dock.set_collapsed(Group::Layers, false);
-                self.active_dock_group = Some(Group::Layers);
-            }
+            // On phones (both portrait and landscape), collapse dock groups by default
+            // so the canvas starts with 100% full screen width for uninterrupted creative work!
+            app.ui.dock.set_collapsed(Group::Color, true);
+            app.ui.dock.set_collapsed(Group::Properties, true);
+            app.ui.dock.set_collapsed(Group::Layers, true);
+            self.active_dock_group = None;
         } else {
             // Tablets and large screens have plenty of room; status bar active, full dock side-by-side
             app.ui.panels.status_bar = true;

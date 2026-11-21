@@ -540,6 +540,18 @@ pub(super) fn ensure_gpu(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usiz
             return true;
         }
     }
+    // Provide live viewport hint to GPU canvas for viewport tile pooling on large documents.
+    let zoom = app.ui.views.get(idx).map(|v| v.zoom).unwrap_or(1.0);
+    let center = [
+        (visible.x0 as f32 + visible.x1 as f32) / 2.0,
+        (visible.y0 as f32 + visible.y1 as f32) / 2.0,
+    ];
+    let screen_px = [
+        ((visible.width().max(1) as f32) * zoom).ceil() as u32,
+        ((visible.height().max(1) as f32) * zoom).ceil() as u32,
+    ];
+    gpu.update_viewport(center, zoom, screen_px);
+
     // Display textures for a canvas this large would not fit the GPU: the reduced CPU canvas
     // draws it (checked before the memory budget, which walks the history, every frame).
     if !gpu.fits_canvas(&doc) {

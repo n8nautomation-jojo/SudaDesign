@@ -69,10 +69,11 @@ pub(super) fn visible_sections(hidden: &[String]) -> Vec<Vec<(usize, Vec<Tool>)>
     sections
 }
 
-/// A primary-button gesture started on this tool; open only after it leaves its hit area.
+/// A primary-button gesture started on this tool; open only after it leaves its hit area with slop.
 /// Using pointer origin rather than `Response::dragged` also works for click-only icon buttons.
 pub(super) fn tool_flyout_drag_open(button: Rect, origin: Option<Pos2>, pointer: Option<Pos2>, primary_down: bool) -> bool {
-    primary_down && origin.is_some_and(|p| button.contains(p)) && pointer.is_some_and(|p| !button.contains(p))
+    let slop_rect = button.expand(4.0);
+    primary_down && origin.is_some_and(|p| button.contains(p)) && pointer.is_some_and(|p| !slop_rect.contains(p))
 }
 
 /// A toolbar press cannot click a flyout row in egui because the press began elsewhere.
@@ -181,8 +182,11 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                                         let _ = app.run("view.actualPixels", json!({}));
                                     }
                                     // Right-click, long-press, or press-drag away opens the flyout (Photoshop).
+                                    let press_started_here = ui.input(|i| i.pointer.press_origin().is_some_and(|p| resp.rect.contains(p)));
+                                    let pointer_still_near = ui.input(|i| i.pointer.hover_pos().is_some_and(|p| resp.rect.expand(6.0).contains(p)));
+                                    let held_on_button = (resp.is_pointer_button_down_on() || (press_started_here && pointer_still_near)) && ui.input(|i| i.pointer.primary_down());
                                     let held_for =
-                                        resp.is_pointer_button_down_on().then(|| ui.input(|i| i.pointer.press_start_time().map(|t0| i.time - t0))).flatten();
+                                        held_on_button.then(|| ui.input(|i| i.pointer.press_start_time().map(|t0| i.time - t0))).flatten();
                                     if slot.len() > 1
                                         && let Some(seconds) = held_for
                                         && seconds < 0.35

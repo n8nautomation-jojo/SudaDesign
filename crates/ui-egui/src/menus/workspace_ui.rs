@@ -28,6 +28,29 @@ pub struct ShellUi {
     pub sticky_shift: bool,
     pub sticky_command: bool,
     pub sticky_alt: bool,
+    /// Held modifiers from touch HUD (temporary, not serialized)
+    #[serde(skip)]
+    pub held_shift: bool,
+    #[serde(skip)]
+    pub held_command: bool,
+    #[serde(skip)]
+    pub held_alt: bool,
+    /// Whether the touch-native floating modifier HUD is visible.
+    pub modifier_hud_visible: bool,
+    /// Explicitly hidden by user on touch screens.
+    pub modifier_hud_explicitly_hidden: bool,
+    /// User-dragged position of the modifier HUD.
+    pub modifier_hud_pos: Option<[f32; 2]>,
+    /// Whether the smart quick actions HUD is visible.
+    pub quick_actions_visible: bool,
+    /// Explicitly hidden by user on touch screens.
+    pub quick_actions_explicitly_hidden: bool,
+    /// User-dragged position of the quick actions HUD.
+    pub quick_actions_pos: Option<[f32; 2]>,
+    /// Whether the quick actions HUD is currently minimized into a compact trigger pill.
+    pub quick_actions_minimized: bool,
+    /// Whether the user explicitly requested the virtual soft keyboard to open (e.g. for typing shortcuts on mobile/tablet).
+    pub soft_keyboard_requested: bool,
     /// Custom pixel aspect ratios (the active one is `ViewOptions::pixel_aspect` = `custom:<ratio>:<name>`).
     pub custom_pars: Vec<CustomPar>,
     /// Open dialog: (kind, fields). Kinds: newWorkspace, deleteWorkspace, customPar, preview32,
@@ -100,12 +123,12 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
     })
 }
 
-/// Latched Modifier Keys panel keys added to the real ones.
+/// Latched or held Modifier Keys panel / HUD keys added to the real ones.
 pub fn sticky_mods(app: &PhotocraftApp, mut m: egui::Modifiers) -> egui::Modifiers {
     let s = &app.ui.shell;
-    m.shift |= s.sticky_shift;
-    m.alt |= s.sticky_alt;
-    if s.sticky_command {
+    m.shift |= s.sticky_shift || s.held_shift;
+    m.alt |= s.sticky_alt || s.held_alt;
+    if s.sticky_command || s.held_command {
         m.command = true;
         if cfg!(target_os = "macos") {
             m.mac_cmd = true;
@@ -376,8 +399,13 @@ pub fn confirm(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<Value, St
     r
 }
 
-/// Draws the Modifier Keys panel and the open dialog.
+/// Draws the Modifier Keys panel, floating Modifier HUD, Quick Actions HUD, and the open dialog.
 pub fn windows(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    // Touch-native floating Modifier Keys HUD
+    crate::input::modifier_hud::show(app, ctx);
+    // Touch-native floating Smart Quick Actions HUD
+    crate::input::quick_actions::show(app, ctx);
+
     if app.ui.shell.modifier_keys {
         let mut close = false;
         let mut s = app.ui.shell.clone();

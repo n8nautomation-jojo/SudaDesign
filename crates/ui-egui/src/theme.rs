@@ -874,33 +874,16 @@ pub fn install_fonts_with(ctx: &egui::Context, cjk: crate::cjk_fonts::Sources) {
     if let Some(mono) = mono {
         fonts.families.entry(FontFamily::Monospace).or_default().insert(0, mono);
     }
-    // Bundled Arabic fonts (Tajawal, Cairo, Amiri, Aref Ruqaa, beIN Sports, Al-Mateen, Dubai, etc.):
+    // Bundled Arabic fonts (Tajawal, Cairo, Amiri, Aref Ruqaa):
     // registered into the static stack as UI fallbacks so Arabic text (menus, dialogs, layers, status)
-    // renders natively without missing glyphs.
+    // renders natively without missing glyphs. All 100% SIL Open Font License 1.1 compliant.
     let tajawal = add(&mut fonts, "Tajawal", photocraft_text::fonts::TAJAWAL_REGULAR.as_slice());
     let _tajawal_bold = add(&mut fonts, "Tajawal-Bold", photocraft_text::fonts::TAJAWAL_BOLD.as_slice());
     let amiri = add(&mut fonts, "Amiri", photocraft_text::fonts::AMIRI_REGULAR.as_slice());
     let _amiri_bold = add(&mut fonts, "Amiri-Bold", photocraft_text::fonts::AMIRI_BOLD.as_slice());
     let ruqaa = add(&mut fonts, "ArefRuqaa", photocraft_text::fonts::AREF_RUQAA_REGULAR.as_slice());
     let cairo = add(&mut fonts, "Cairo", photocraft_text::fonts::CAIRO_VARIABLE.as_slice());
-    let bein = add(&mut fonts, "beIN-Sports", photocraft_text::fonts::BEIN_SPORTS.as_slice());
-    let mateen = add(&mut fonts, "Al-Mateen", photocraft_text::fonts::AL_MATEEN.as_slice());
-    let dubai = add(&mut fonts, "Dubai", photocraft_text::fonts::DUBAI_BOLD.as_slice());
-    let diwani = add(&mut fonts, "Diwani", photocraft_text::fonts::DIWANI.as_slice());
-    let thuluth = add(&mut fonts, "Thuluth", photocraft_text::fonts::THULUTH.as_slice());
-    let droid_kufi = add(&mut fonts, "DroidKufi", photocraft_text::fonts::DROID_ARABIC_KUFI.as_slice());
-    let droid_naskh = add(&mut fonts, "DroidNaskh", photocraft_text::fonts::DROID_ARABIC_NASKH.as_slice());
-    let kufyan = add(&mut fonts, "Kufyan", photocraft_text::fonts::KUFYAN_REGULAR.as_slice());
-    let montserrat_ar = add(&mut fonts, "Montserrat-Arabic", photocraft_text::fonts::MONTSERRAT_ARABIC_REGULAR.as_slice());
-    let gess = add(&mut fonts, "GE-SS-Two", photocraft_text::fonts::GE_SS_TWO_BOLD.as_slice());
-    let frutiger = add(&mut fonts, "Frutiger-Arabic", photocraft_text::fonts::FRUTIGER_ARABIC_BOLD.as_slice());
-    for f in [
-        &tajawal, &cairo, &amiri, &ruqaa, &bein, &mateen, &dubai, &diwani, &thuluth, &droid_kufi,
-        &droid_naskh, &kufyan, &montserrat_ar, &gess, &frutiger,
-    ]
-    .into_iter()
-    .flatten()
-    {
+    for f in [&tajawal, &cairo, &amiri, &ruqaa].into_iter().flatten() {
         fonts.families.entry(FontFamily::Proportional).or_default().push(f.clone());
         fonts.families.entry(FontFamily::Monospace).or_default().push(f.clone());
     }

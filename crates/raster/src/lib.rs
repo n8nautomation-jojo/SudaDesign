@@ -10,10 +10,13 @@
 mod interrupt;
 pub use interrupt::{Cancelled, Interrupt};
 
+pub(crate) mod tile_cache;
+pub(crate) mod cache_policy;
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io::{Read, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use photocraft_color::{ColorMode, PixelFormat, SampleType, read_sample, read_samples, write_sample};
 use photocraft_geom::{Rect, TILE_SIZE, TileCoord};
@@ -190,12 +193,46 @@ fn last_difference(a: &[u8], b: &[u8]) -> Option<usize> {
     x.iter().zip(y).rposition(|(p, q)| p != q).map(|i| k * DIFF_BLOCK + i)
 }
 
-#[derive(Clone, Debug)]
+/// A sparse, copy-on-write tiled pixel surface in any [`PixelFormat`].
+///
+/// The LRU decompression cache (`cache`) is excluded from `Clone`, `Debug`,
+/// and `PartialEq` — it is a pure performance optimisation whose state does
+/// not affect logical document identity.
 pub struct Surface {
     format: PixelFormat,
     default_pixel: Box<[u8]>,
     pub(crate) tiles: BTreeMap<TileCoord, Arc<Tile>>,
     pub(crate) compressed: BTreeMap<TileCoord, Arc<CompressedTile>>,
+    /// LRU cache of recently decompressed tiles.  Interior-mutable so
+    /// read-only `&self` methods can populate it without `&mut self`.
+    cache: Mutex<tile_cache::LruTileCache>,
+}
+
+impl Clone for Surface {
+    fn clone(&self) -> Self {
+        Self {
+            format: self.format,
+            default_pixel: self.default_pixel.clone(),
+            tiles: self.tiles.clone(),
+            compressed: self.compressed.clone(),
+            // Each clone gets its own empty cache; the original's warm entries
+            // are not transferable because the compressed Arc pointers may
+            // differ after a CoW split.
+            cache: Mutex::new(tile_cache::LruTileCache::new(
+                cache_policy::default_capacity(),
+            )),
+        }
+    }
+}
+
+impl fmt::Debug for Surface {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Surface")
+            .field("format", &self.format)
+            .field("tile_count", &self.tile_count())
+            .field("compressed_count", &self.compressed.len())
+            .finish_non_exhaustive()
+    }
 }
 
 /// Use stack storage when it fits, otherwise reuse a dynamically sized sample buffer.
@@ -395,8 +432,31 @@ impl Surface {
             return Some(&t.data);
         }
         if let Some(ct) = self.compressed.get(c) {
+            let ct_ptr = Arc::as_ptr(ct) as usize;
+            // Check the LRU cache first to avoid re-decompressing.
+            let cached = self.cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(*c, ct_ptr);
+            if let Some(arc) = cached {
+                // Clone the Tile out of the Arc (cheap: Box<[u8]> clone).
+                if let Ok(cloned) = arc.try_clone() {
+                    *temp = Some(cloned);
+                    return temp.as_ref().map(|t| &t.data[..]);
+                }
+            }
+            // Cache miss: decompress, populate cache, store in temp.
             if let Ok(t) = ct.decompress() {
-                *temp = Some(t);
+                let arc = Arc::new(t);
+                self.cache
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(*c, ct_ptr, arc.clone());
+                // Try to avoid a second clone by try_unwrapping the Arc we
+                // just created (we hold the only strong reference here).
+                let tile = Arc::try_unwrap(arc)
+                    .unwrap_or_else(|a| (*a).clone());
+                *temp = Some(tile);
                 return temp.as_ref().map(|t| &t.data[..]);
             }
         }
@@ -441,6 +501,7 @@ impl Surface {
             default_pixel: vec![0u8; format.bytes_per_pixel()].into_boxed_slice(),
             tiles: BTreeMap::new(),
             compressed: BTreeMap::new(),
+            cache: Mutex::new(tile_cache::LruTileCache::new(cache_policy::default_capacity())),
         }
     }
 
@@ -504,8 +565,15 @@ impl Surface {
             return Some(t.clone());
         }
         if let Some(ct) = self.compressed.get(&c) {
+            let ct_ptr = Arc::as_ptr(ct) as usize;
+            let mut cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(arc) = cache.get(c, ct_ptr) {
+                return Some(arc);
+            }
             if let Ok(t) = ct.decompress() {
-                return Some(Arc::new(t));
+                let arc = Arc::new(t);
+                cache.insert(c, ct_ptr, arc.clone());
+                return Some(arc);
             }
         }
         None
@@ -518,13 +586,41 @@ impl Surface {
         for (coord, tile) in &self.tiles {
             f(*coord, tile.clone());
         }
-        for (coord, ct) in &self.compressed {
-            if let Ok(t) = ct.decompress() {
-                f(*coord, Arc::new(t));
+        for coord in self.compressed.keys() {
+            if let Some(t) = self.get_tile(*coord) {
+                f(*coord, t);
             } else if let Ok(t) = Tile::try_filled(&self.format, &self.default_pixel) {
                 f(*coord, Arc::new(t));
             }
         }
+    }
+    /// Total bytes currently held in the LRU decompression cache.
+    pub fn cached_tile_bytes(&self) -> usize {
+        self.cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .bytes_used()
+    }
+    /// Number of decompressed tiles currently in the LRU cache.
+    pub fn cached_tile_count(&self) -> usize {
+        self.cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+    /// Purge all decompressed tiles held in the LRU cache.
+    pub fn clear_tile_cache(&self) {
+        self.cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+    }
+    /// Shrink the LRU tile cache according to memory pressure (0–100).
+    ///
+    /// Returns the number of bytes released.
+    pub fn shrink_tile_cache_under_pressure(&self, level: i32) -> usize {
+        let mut cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        cache_policy::shrink_under_pressure(&mut cache, level)
     }
     /// Total memory footprint of this surface in bytes (resident tiles + compressed tiles).
     pub fn memory_bytes(&self) -> usize {
@@ -576,6 +672,15 @@ impl Surface {
             return true;
         }
         if let Some(ct) = self.compressed.remove(&c) {
+            let ct_ptr = Arc::as_ptr(&ct) as usize;
+            let mut cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let cached = cache.get(c, ct_ptr);
+            cache.remove_coord(c);
+            drop(cache);
+            if let Some(arc) = cached {
+                self.tiles.insert(c, arc);
+                return true;
+            }
             if let Ok(tile) = ct.decompress() {
                 self.tiles.insert(c, Arc::new(tile));
                 return true;

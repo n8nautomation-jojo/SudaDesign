@@ -41,13 +41,31 @@ impl DocTextures {
     /// of textures, #4017) lowers the budget below it, so that canvas and larger ones are drawn
     /// on the CPU canvas instead of the out-of-memory error disabling the GPU for the session.
     pub(super) fn new(device: &wgpu::Device, res: &Resources, size: [u32; 2], tile: u32, format: wgpu::TextureFormat) -> Option<Self> {
-        let bytes = canvas_texture_bytes(size, tile, texel_bytes(format));
+        Self::new_clipped(device, res, size, tile, format, None)
+    }
+
+    /// Like [`DocTextures::new`], but restricts allocated tile textures to `clip` ([cx0, cy0, cx1, cy1]).
+    /// When the document is too large to fit in physical VRAM as a whole, viewport tile pooling
+    /// allows rendering only the visible viewport tiles without falling back to the CPU canvas.
+    pub(super) fn new_clipped(
+        device: &wgpu::Device,
+        res: &Resources,
+        size: [u32; 2],
+        tile: u32,
+        format: wgpu::TextureFormat,
+        clip: Option<[u32; 4]>,
+    ) -> Option<Self> {
+        let bpp = texel_bytes(format);
+        let bytes = match clip {
+            Some(c) => super::budget::clipped_canvas_bytes(c, size, tile, bpp),
+            None => canvas_texture_bytes(size, tile, bpp),
+        };
         if bytes > res.canvas_budget.load(Ordering::Relaxed) {
             return None;
         }
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let set = Self::create(device, res, size, tile, format);
+        let set = Self::create_clipped(device, res, size, tile, format, clip);
         // Native wgpu reports these synchronously; where they arrive later (WebGPU) none is seen.
         let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
         let mut error = None;
@@ -64,11 +82,23 @@ impl DocTextures {
         Some(set)
     }
 
-    fn create(device: &wgpu::Device, res: &Resources, size: [u32; 2], tile: u32, format: wgpu::TextureFormat) -> Self {
+    fn create_clipped(
+        device: &wgpu::Device,
+        res: &Resources,
+        size: [u32; 2],
+        tile: u32,
+        format: wgpu::TextureFormat,
+        clip: Option<[u32; 4]>,
+    ) -> Self {
         let mut tiles = Vec::new();
         for ty in (0..size[1]).step_by(tile as usize) {
             for tx in (0..size[0]).step_by(tile as usize) {
                 let (w, h) = (tile.min(size[0] - tx), tile.min(size[1] - ty));
+                if let Some([cx0, cy0, cx1, cy1]) = clip {
+                    if tx + w <= cx0 || tx >= cx1 || ty + h <= cy0 || ty >= cy1 {
+                        continue;
+                    }
+                }
                 let levels_n = mip_count(w, h);
                 let texture = device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("pc_canvas_tile"),
@@ -99,7 +129,7 @@ impl DocTextures {
                 tiles.push(Tile { rect: [tx, ty, w, h], texture, levels, bind_group, _uniform: uniform });
             }
         }
-        Self { size, format, tiles }
+        Self { size, format, tiles, clip }
     }
 
     /// Write `size` pixels at document `origin` from `texels` (in the texture format, row stride

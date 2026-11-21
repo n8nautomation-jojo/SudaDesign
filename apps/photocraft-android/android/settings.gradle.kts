@@ -13,6 +13,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "photocraft-android"
+rootProject.name = "SudaDesign"
 include(":app")
 

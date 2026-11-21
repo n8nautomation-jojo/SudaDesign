@@ -306,6 +306,8 @@ impl PhotocraftApp {
         palette::show(self, &ctx);
         dialogs::show(self, &ctx);
         layers_panel_ui::show_dialog(self, &ctx);
+        panels::mobile_layers_drawer(self, &ctx);
+        crate::input::keyboard_bar::show(self, &ctx);
         rasterize_prompt::run_pending(self, &ctx);
         jobs_ui::dialog(self, &ctx);
         discard_ui::show(self, &ctx);

@@ -45,7 +45,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(p) = &mut app.tiff_options else { return };
     let (mut ok, mut cancel) = (false, false);
     let (mut discard, mut dont_ask) = (p.discard_layers, p.dont_ask_again);
-    let _modal = egui::Modal::new(egui::Id::unique("tiff-options")).show(ctx, |ui| {
+    let area = crate::safe_area::modal_area(ctx, egui::Id::unique("tiff-options"));
+    let _modal = egui::Modal::new(egui::Id::unique("tiff-options")).area(area).show(ctx, |ui| {
         ui.set_max_width(420.0);
         ui.label(egui::RichText::new(tl!("TIFF Options")).font(crate::theme::semibold(15.0)));
         ui.add_space(4.0);

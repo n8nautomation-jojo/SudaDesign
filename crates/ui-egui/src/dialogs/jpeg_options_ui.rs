@@ -196,7 +196,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(p) = &mut app.jpeg_options else { return };
     let (mut ok, mut cancel) = (false, false);
     let (mut quality, mut format) = (p.quality, p.format);
-    let _modal = egui::Modal::new(egui::Id::unique("jpeg-options")).show(ctx, |ui| {
+    let area = crate::safe_area::modal_area(ctx, egui::Id::unique("jpeg-options"));
+    let _modal = egui::Modal::new(egui::Id::unique("jpeg-options")).area(area).show(ctx, |ui| {
         ui.set_max_width(360.0);
         ui.label(egui::RichText::new(tl!("JPEG Options")).font(crate::theme::semibold(15.0)));
         ui.add_space(4.0);

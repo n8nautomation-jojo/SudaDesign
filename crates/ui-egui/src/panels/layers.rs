@@ -271,14 +271,12 @@ pub(super) fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let rows = crate::layer_tree_ui::panel_rows(app, &doc);
     let ctx = ui.ctx().clone();
     let footer = widgets::footer_height(ui) + ui.spacing().item_spacing.y;
-    let fill = ui.available_height() > footer + 60.0;
-    let rows_h = if fill { ui.available_height() - footer } else { f32::INFINITY };
+    let rows_h = (ui.available_height() - footer).max(40.0);
     egui::ScrollArea::vertical()
         // Keep each document's position independent, even when tab indices change (#5522).
         .id_salt(("layer-rows", doc.id.0))
         .max_height(rows_h)
-        .min_scrolled_height(if fill { rows_h } else { 0.0 })
-        .auto_shrink([false, !fill])
+        .auto_shrink([false, false])
         .show(ui, |ui| {
             // The drag keys are set only by actual layer-row and fx drags, not clicks or
             // ordinary scrolling. The ScrollArea applies this to its own content.
@@ -410,7 +408,7 @@ pub(super) fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         } else {
             ("layer.delete", "Delete layer")
         };
-        let btn_sz = if crate::dialogs::is_mobile_screen(&ctx) { 32.0 } else { 26.0 };
+        let btn_sz = if crate::dialogs::is_mobile_screen(&ctx) { 34.0 } else { 26.0 };
         let trash = icons::button(ui, "trash", btn_sz, false, tl!(label));
         // A selected smart filter row is what Delete removes, as in Photoshop (#4751).
         let picked_filter = crate::smart_ui::selected(&ctx, &doc, active);
@@ -531,7 +529,7 @@ pub(super) fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         });
         // Photoshop's footer starts with Link Layers (enabled with two or more layers selected).
         let can_link = app.session.is_enabled("layer.linkLayers");
-        if ui.add_enabled_ui(can_link, |ui| icons::button(ui, "link-2", 26.0, false, tl!("Link layers"))).inner.clicked() {
+        if ui.add_enabled_ui(can_link, |ui| icons::button(ui, "link-2", btn_sz, false, tl!("Link layers"))).inner.clicked() {
             actions.push(("layer.linkLayers".into(), json!({})));
         }
     });
@@ -624,4 +622,103 @@ pub(crate) fn fx_button(ui: &mut egui::Ui, size: f32, tip: &str) -> egui::Respon
 
 pub(super) fn channels(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     crate::channels_panel::show(app, ui);
+}
+
+/// Renders a full-height slide-over Layers drawer for mobile screens.
+///
+/// On compact mobile viewports (smartphones in landscape or portrait), the dock column
+/// squeezes the canvas and is itself squeezed between menu and options bars.
+/// This drawer opens as a full-height overlay spanning 100% of the screen height,
+/// displaying all layers at once, keeping the bottom action bar (fx, mask, adjustment,
+/// group, new layer, delete, link) pinned and fully visible, and dismissed on backdrop tap.
+pub fn mobile_layers_drawer(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    if !crate::dialogs::is_mobile_screen(ctx) {
+        return;
+    }
+    // Only display when Layers group is active / uncollapsed
+    if app.ui.dock.is_collapsed(crate::dock::Group::Layers) {
+        return;
+    }
+
+    let screen = ctx.content_rect();
+    if screen.width() <= 0.0 || screen.height() <= 0.0 {
+        return;
+    }
+
+    let insets = crate::safe_area::get_safe_area_insets(ctx);
+    let t = Tokens::get(ctx);
+    let is_rtl = crate::direction::is_rtl();
+    let drawer_w = if screen.width() < 600.0 {
+        (screen.width() * 0.90).clamp(280.0, 380.0)
+    } else {
+        340.0
+    };
+    let drawer_h = screen.height();
+    let drawer_x = if is_rtl {
+        screen.left()
+    } else {
+        screen.right() - drawer_w
+    };
+    let drawer_rect = Rect::from_min_size(pos2(drawer_x, screen.top()), vec2(drawer_w, drawer_h));
+
+    // 1. Semi-transparent backdrop scrim covering the remaining canvas
+    let backdrop_rect = if is_rtl {
+        Rect::from_min_max(pos2(drawer_rect.right(), screen.top()), pos2(screen.right(), screen.bottom()))
+    } else {
+        Rect::from_min_max(pos2(screen.left(), screen.top()), pos2(drawer_rect.left(), screen.bottom()))
+    };
+
+    let scrim_fill = if t.dark() {
+        egui::Color32::from_black_alpha(85)
+    } else {
+        egui::Color32::from_black_alpha(45)
+    };
+
+    ctx.layer_painter(egui::LayerId::new(egui::Order::Middle, egui::Id::unique("layers_backdrop")))
+        .rect_filled(backdrop_rect, egui::CornerRadius::ZERO, scrim_fill);
+
+    // Dismiss drawer when user taps anywhere on the backdrop canvas
+    if ctx.input(|i| i.pointer.primary_pressed()) {
+        if let Some(pos) = ctx.input(|i| i.pointer.press_origin()) {
+            if backdrop_rect.contains(pos) {
+                app.ui.dock.set_collapsed(crate::dock::Group::Layers, true);
+                return;
+            }
+        }
+    }
+
+    // 2. Full-height drawer in foreground layer
+    egui::Area::new(egui::Id::unique("suda_mobile_layers_drawer"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(drawer_rect.min)
+        .show(ctx, |ui| {
+            ui.set_width(drawer_rect.width());
+            ui.set_height(drawer_rect.height());
+
+            let bg_fill = if t.dark() {
+                egui::Color32::from_rgb(26, 26, 30)
+            } else {
+                egui::Color32::from_rgb(245, 245, 248)
+            };
+
+            let margin_top = (10.0 + insets.top).round() as i8;
+            let margin_bottom = (8.0 + insets.effective_bottom()).round() as i8;
+            let margin_left = (10.0 + if is_rtl { insets.left } else { 0.0 }).round() as i8;
+            let margin_right = (10.0 + if !is_rtl { insets.right } else { 0.0 }).round() as i8;
+
+            egui::Frame::NONE
+                .fill(bg_fill)
+                .stroke(egui::Stroke::new(1.0, t.card_border))
+                .inner_margin(egui::Margin {
+                    left: margin_left,
+                    right: margin_right,
+                    top: margin_top,
+                    bottom: margin_bottom,
+                })
+                .show(ui, |ui| {
+                    ui.set_width(drawer_rect.width() - (margin_left as f32 + margin_right as f32));
+                    ui.set_height(drawer_rect.height() - (margin_top as f32 + margin_bottom as f32));
+                    layers(app, ui);
+                });
+        });
 }

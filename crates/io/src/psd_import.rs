@@ -447,6 +447,7 @@ impl Ctx<'_> {
         l.mask = self.record_mask(rec, &name);
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn layer_from_record(&mut self, rec: &LayerRecord) -> Layer {
         let name = rec.name();
         let fill_key = [b"SoCo", b"GdFl", b"PtFl"].into_iter().find(|k| rec.block(k).is_some());

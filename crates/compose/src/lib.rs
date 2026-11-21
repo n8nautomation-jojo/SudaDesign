@@ -24,6 +24,7 @@ pub mod effects;
 pub mod fill_layout;
 pub mod filter_mask;
 pub mod gradient_fill;
+pub mod lod;
 pub mod masks;
 pub mod multichannel;
 pub mod native;
@@ -31,8 +32,12 @@ pub mod native_lab;
 pub mod pattern;
 pub mod proxy;
 pub mod psblend;
+pub mod pyramid;
 pub mod shape_split;
 mod uniform;
+
+pub use lod::LodLevel;
+pub use pyramid::TilePyramid;
 
 use photocraft_color::blend::BlendMode;
 use photocraft_doc::{Document, Fill, Layer, LayerContent, Pattern};

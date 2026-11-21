@@ -18,6 +18,7 @@
 
 pub mod builtin;
 pub mod clut;
+pub mod cmyk_lut;
 pub mod curve;
 pub mod gamut;
 mod gpu_matrix_shaper;
@@ -32,6 +33,7 @@ mod write;
 
 pub use builtin::Builtin;
 pub use clut::Clut;
+pub use cmyk_lut::CmykLut;
 pub use curve::Curve;
 pub use gamut::GamutCheck;
 pub use gpu_matrix_shaper::GpuMatrixShaper;

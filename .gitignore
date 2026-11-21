@@ -29,7 +29,7 @@ scratch*
 build/
 **/build/
 .cxx/
-**/src/main/jniLibs/
+!**/src/main/jniLibs/**/libphotocraft_android.so
 local.properties
 
 # Android Studio / IntelliJ / VSCode

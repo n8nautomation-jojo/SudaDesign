@@ -228,13 +228,23 @@ pub fn is_tablet(ctx: &egui::Context) -> bool {
     !is_mobile_screen(ctx)
 }
 
+/// Stores the current IME (soft keyboard) height in logical points.
+pub fn set_ime_inset(ctx: &egui::Context, inset: f32) {
+    crate::safe_area::set_ime_inset(ctx, inset);
+}
+
+/// Retrieves the current IME (soft keyboard) height in logical points.
+pub fn get_ime_inset(ctx: &egui::Context) -> f32 {
+    crate::safe_area::get_ime_inset(ctx)
+}
+
 /// The size the Curves dialog first opens at: the 300-point graph it had before it could be
 /// resized (#5113); it grows to fit its controls below the graph.
 const CURVES_SIZE: egui::Vec2 = egui::vec2(300.0, 420.0);
 /// The smallest a resizable dialog is dragged to: Curves keeps a usable graph (#8984), the others
 /// their two-column layouts.
 fn resizable_min(ctx: &egui::Context, fields: &serde_json::Map<String, Value>) -> egui::Vec2 {
-    let screen = ctx.content_rect();
+    let screen = crate::safe_area::safe_rect(ctx);
     if is_curves(fields) {
         egui::vec2(300.0_f32.min(screen.width() - 20.0), 320.0_f32.min(screen.height() - 40.0))
     } else if is_mobile_screen(ctx) {
@@ -252,7 +262,8 @@ fn size_id(place: egui::Id) -> egui::Id {
 /// The largest a resizable dialog of `fields` with smallest size `min` is dragged to: the window
 /// less a margin, and for Curves no wider than its graph can grow (#8984), so no blank column.
 fn resizable_max(ctx: &egui::Context, fields: &serde_json::Map<String, Value>, min: egui::Vec2) -> egui::Vec2 {
-    let mut max = (ctx.content_rect().size() - egui::vec2(40.0, 40.0)).max(min);
+    let safe = crate::safe_area::safe_rect(ctx);
+    let mut max = (safe.size() - egui::vec2(32.0, 32.0)).max(min);
     if is_curves(fields) {
         max.x = max.x.min(crate::adjust_editors::curve_side_max(ctx)).max(min.x);
     }
@@ -603,19 +614,18 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         let mut close_clicked = false;
         let mut sizing = false;
         let is_mobile = is_mobile_screen(ctx);
+        let safe = crate::safe_area::safe_rect(ctx);
+        let full = ctx.input(|i| i.viewport_rect());
+        let center_offset = safe.center() - full.center();
         let area = if is_mobile {
-            let (screen, full) = ctx.input(|i| (i.content_rect(), i.viewport_rect()));
-            let center_offset: egui::Vec2 = screen.center() - full.center();
             egui::Modal::default_area(id).anchor(egui::Align2::CENTER_CENTER, center_offset)
         } else {
             match start {
                 Some(offset) => {
-                    let content_min = ctx.content_rect().min.to_vec2();
-                    egui::Modal::default_area(id).anchor(egui::Align2::LEFT_TOP, content_min + offset)
+                    let pos = safe.min.to_vec2() + offset;
+                    egui::Modal::default_area(id).anchor(egui::Align2::LEFT_TOP, pos)
                 }
                 None => {
-                    let (screen, full) = ctx.input(|i| (i.content_rect(), i.viewport_rect()));
-                    let center_offset: egui::Vec2 = screen.center() - full.center();
                     egui::Modal::default_area(id).anchor(egui::Align2::CENTER_CENTER, center_offset)
                 }
             }
@@ -658,12 +668,12 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
             let compact = d.fields.contains_key("__compact");
             // The curve editor's graph is as wide as the dialog lets it be (#5113, #8984).
             let curves = is_curves(&fields);
-            let max_dialog_w = (ctx.content_rect().width() - 20.0).max(280.0);
+            let max_dialog_w = (safe.width() - 16.0).max(280.0);
             if !compact {
                 ui.set_min_width(if is_mobile { 280.0_f32.min(max_dialog_w) } else if curves { 300.0 } else { 380.0 });
             }
             // A resizable dialog's contents fill its resizable area (#7420), the others the window.
-            let room = if resizable.is_some() { available.x } else { (ctx.content_rect().width() - 48.0).max(280.0) };
+            let room = if resizable.is_some() { available.x } else { (safe.width() - 32.0).max(280.0) };
             let wide = crate::prefs_ui::width(&d.fields, room);
             if let Some(w) = wide {
                 ui.set_min_width(w.min(460.0).min(max_dialog_w));
@@ -720,7 +730,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
             ui.add_space(8.0);
             crate::field_tab::begin(ui.ctx());
             let chrome_allowance = if is_mobile { 110.0 } else { 96.0 };
-            let max_body_h = (ctx.content_rect().height() - chrome_allowance).max(80.0);
+            let max_body_h = (safe.height() - chrome_allowance).max(80.0);
             let mut body_outcome = None;
             egui::ScrollArea::vertical()
                 .id_salt(("dialog-body-scroll", d.id))
@@ -777,8 +787,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         }
         // Pin once laid out at its real size (the first frame is an invisible sizing pass).
         if !is_mobile && !sizing && (web || fixed.is_some() || pinned.is_none() || drag != egui::Vec2::ZERO) {
-            let screen = ctx.content_rect();
-            // Keep the whole dialog (and so its title bar) on screen.
+            let screen = safe;
+            // Keep the whole dialog (and so its title bar) on screen and within safe area bounds.
             let room = (screen.size() - modal.response.rect.size()).max(egui::Vec2::ZERO);
             let offset = (pinned.unwrap_or(modal.response.rect.min - screen.min) + drag).clamp(egui::Vec2::ZERO, room);
             ctx.data_mut(|m| m.insert_temp(id, offset));

@@ -83,6 +83,63 @@ pub fn diff_text<'a>(prev: &str, next: &'a str) -> (usize, &'a str) {
     (deleted_chars, next_mid)
 }
 
+/// Maps an ASCII character or symbol typed on the Android soft keyboard to an `egui::Key`.
+pub fn char_to_key(c: char) -> Option<egui::Key> {
+    match c.to_ascii_lowercase() {
+        'a' => Some(egui::Key::A),
+        'b' => Some(egui::Key::B),
+        'c' => Some(egui::Key::C),
+        'd' => Some(egui::Key::D),
+        'e' => Some(egui::Key::E),
+        'f' => Some(egui::Key::F),
+        'g' => Some(egui::Key::G),
+        'h' => Some(egui::Key::H),
+        'i' => Some(egui::Key::I),
+        'j' => Some(egui::Key::J),
+        'k' => Some(egui::Key::K),
+        'l' => Some(egui::Key::L),
+        'm' => Some(egui::Key::M),
+        'n' => Some(egui::Key::N),
+        'o' => Some(egui::Key::O),
+        'p' => Some(egui::Key::P),
+        'q' => Some(egui::Key::Q),
+        'r' => Some(egui::Key::R),
+        's' => Some(egui::Key::S),
+        't' => Some(egui::Key::T),
+        'u' => Some(egui::Key::U),
+        'v' => Some(egui::Key::V),
+        'w' => Some(egui::Key::W),
+        'x' => Some(egui::Key::X),
+        'y' => Some(egui::Key::Y),
+        'z' => Some(egui::Key::Z),
+        '0' => Some(egui::Key::Num0),
+        '1' => Some(egui::Key::Num1),
+        '2' => Some(egui::Key::Num2),
+        '3' => Some(egui::Key::Num3),
+        '4' => Some(egui::Key::Num4),
+        '5' => Some(egui::Key::Num5),
+        '6' => Some(egui::Key::Num6),
+        '7' => Some(egui::Key::Num7),
+        '8' => Some(egui::Key::Num8),
+        '9' => Some(egui::Key::Num9),
+        ' ' => Some(egui::Key::Space),
+        '\n' | '\r' => Some(egui::Key::Enter),
+        '\t' => Some(egui::Key::Tab),
+        '[' => Some(egui::Key::OpenBracket),
+        ']' => Some(egui::Key::CloseBracket),
+        ';' => Some(egui::Key::Semicolon),
+        ':' => Some(egui::Key::Colon),
+        ',' => Some(egui::Key::Comma),
+        '.' => Some(egui::Key::Period),
+        '/' => Some(egui::Key::Slash),
+        '\\' => Some(egui::Key::Backslash),
+        '-' => Some(egui::Key::Minus),
+        '=' | '+' => Some(egui::Key::Equals),
+        '`' | '~' => Some(egui::Key::Backtick),
+        _ => None,
+    }
+}
+
 /// State tracker for Android Virtual Keyboard (IME) communication.
 #[derive(Default)]
 pub struct AndroidImeBridge {
@@ -108,13 +165,15 @@ impl AndroidImeBridge {
         ctx: &egui::Context,
         raw_input: &mut egui::RawInput,
         has_type_edit: bool,
+        shell: &mut photocraft_ui_egui::menus::workspace_ui::ShellUi,
     ) {
         let current_focus = ctx.memory(|m| m.focused());
-        let wants_keyboard = ctx.egui_wants_keyboard_input() || has_type_edit || current_focus.is_some();
+        let in_text_edit = ctx.egui_wants_keyboard_input() || has_type_edit || current_focus.is_some();
+        let wants_keyboard = in_text_edit || shell.soft_keyboard_requested;
 
         if wants_keyboard {
             self.unfocused_frames = 0;
-            if current_focus != self.last_focus {
+            if current_focus != self.last_focus || !self.keyboard_visible {
                 self.last_focus = current_focus;
                 self.last_text.clear();
                 app.set_text_input_state(TextInputState::default());
@@ -138,6 +197,7 @@ impl AndroidImeBridge {
                 self.keyboard_visible = false;
                 self.last_text.clear();
                 self.last_focus = None;
+                shell.soft_keyboard_requested = false;
             }
         }
 
@@ -146,52 +206,114 @@ impl AndroidImeBridge {
             let state = app.text_input_state();
             let (deleted_chars, inserted_str) = diff_text(&self.last_text, &state.text);
 
-            if deleted_chars > 0 || !inserted_str.is_empty() {
-                // Emit Backspace key events for deletions
-                for _ in 0..deleted_chars {
-                    raw_input.events.push(egui::Event::Key {
-                        key: egui::Key::Backspace,
-                        physical_key: None,
-                        pressed: true,
-                        repeat: false,
-                        modifiers: egui::Modifiers::NONE,
-                    });
-                    raw_input.events.push(egui::Event::Key {
-                        key: egui::Key::Backspace,
-                        physical_key: None,
-                        pressed: false,
-                        repeat: false,
-                        modifiers: egui::Modifiers::NONE,
-                    });
-                }
+            if in_text_edit {
+                // --- MODE A: Text Entry Mode (Inline text editor / TextEdit widget / Type tool) ---
+                if deleted_chars > 0 || !inserted_str.is_empty() {
+                    // Emit Backspace key events for deletions
+                    for _ in 0..deleted_chars {
+                        raw_input.events.push(egui::Event::Key {
+                            key: egui::Key::Backspace,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        });
+                        raw_input.events.push(egui::Event::Key {
+                            key: egui::Key::Backspace,
+                            physical_key: None,
+                            pressed: false,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        });
+                    }
 
-                // Emit Text or Enter events for insertions
-                if !inserted_str.is_empty() {
-                    for (i, part) in inserted_str.split('\n').enumerate() {
-                        if i > 0 {
-                            raw_input.events.push(egui::Event::Key {
-                                key: egui::Key::Enter,
-                                physical_key: None,
-                                pressed: true,
-                                repeat: false,
-                                modifiers: egui::Modifiers::NONE,
-                            });
-                            raw_input.events.push(egui::Event::Key {
-                                key: egui::Key::Enter,
-                                physical_key: None,
-                                pressed: false,
-                                repeat: false,
-                                modifiers: egui::Modifiers::NONE,
-                            });
+                    // Emit Text or Enter events for insertions
+                    if !inserted_str.is_empty() {
+                        for (i, part) in inserted_str.split('\n').enumerate() {
+                            if i > 0 {
+                                raw_input.events.push(egui::Event::Key {
+                                    key: egui::Key::Enter,
+                                    physical_key: None,
+                                    pressed: true,
+                                    repeat: false,
+                                    modifiers: egui::Modifiers::NONE,
+                                });
+                                raw_input.events.push(egui::Event::Key {
+                                    key: egui::Key::Enter,
+                                    physical_key: None,
+                                    pressed: false,
+                                    repeat: false,
+                                    modifiers: egui::Modifiers::NONE,
+                                });
+                            }
+                            if !part.is_empty() {
+                                raw_input.events.push(egui::Event::Text(part.to_owned()));
+                            }
                         }
-                        if !part.is_empty() {
-                            raw_input.events.push(egui::Event::Text(part.to_owned()));
-                        }
+                    }
+
+                    self.last_text = state.text;
+                    ctx.request_repaint();
+                }
+            } else {
+                // --- MODE B: Command & Shortcut Mode (Canvas focused, virtual keyboard summoned) ---
+                if deleted_chars > 0 {
+                    for _ in 0..deleted_chars {
+                        raw_input.events.push(egui::Event::Key {
+                            key: egui::Key::Backspace,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        });
+                        raw_input.events.push(egui::Event::Key {
+                            key: egui::Key::Backspace,
+                            physical_key: None,
+                            pressed: false,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        });
                     }
                 }
 
-                self.last_text = state.text;
-                ctx.request_repaint();
+                if !inserted_str.is_empty() {
+                    let mut base_mods = egui::Modifiers::NONE;
+                    base_mods.shift = shell.sticky_shift || shell.held_shift;
+                    base_mods.alt = shell.sticky_alt || shell.held_alt;
+                    if shell.sticky_command || shell.held_command {
+                        base_mods.command = true;
+                        base_mods.ctrl = true;
+                    }
+
+                    for c in inserted_str.chars() {
+                        if let Some(key) = char_to_key(c) {
+                            let mut char_mods = base_mods;
+                            if c.is_ascii_uppercase() {
+                                char_mods.shift = true;
+                            }
+
+                            raw_input.events.push(egui::Event::Key {
+                                key,
+                                physical_key: None,
+                                pressed: true,
+                                repeat: false,
+                                modifiers: char_mods,
+                            });
+                            raw_input.events.push(egui::Event::Key {
+                                key,
+                                physical_key: None,
+                                pressed: false,
+                                repeat: false,
+                                modifiers: char_mods,
+                            });
+                        }
+                    }
+
+                    // Reset IME state immediately so subsequent key presses act as fresh shortcuts
+                    app.set_text_input_state(TextInputState::default());
+                    self.last_text.clear();
+                    ctx.request_repaint();
+                }
             }
         }
     }
@@ -270,5 +392,21 @@ mod tests {
         let (del, ins) = diff_text("Hello World Today", "Hello Today");
         assert_eq!(del, 6);
         assert_eq!(ins, "");
+    }
+
+    #[test]
+    fn test_char_to_key_mappings() {
+        assert_eq!(char_to_key('s'), Some(egui::Key::S));
+        assert_eq!(char_to_key('S'), Some(egui::Key::S));
+        assert_eq!(char_to_key('z'), Some(egui::Key::Z));
+        assert_eq!(char_to_key('b'), Some(egui::Key::B));
+        assert_eq!(char_to_key('e'), Some(egui::Key::E));
+        assert_eq!(char_to_key('v'), Some(egui::Key::V));
+        assert_eq!(char_to_key('t'), Some(egui::Key::T));
+        assert_eq!(char_to_key('['), Some(egui::Key::OpenBracket));
+        assert_eq!(char_to_key(']'), Some(egui::Key::CloseBracket));
+        assert_eq!(char_to_key('0'), Some(egui::Key::Num0));
+        assert_eq!(char_to_key(' '), Some(egui::Key::Space));
+        assert_eq!(char_to_key('\n'), Some(egui::Key::Enter));
     }
 }

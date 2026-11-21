@@ -81,6 +81,27 @@ pub fn canvas_texture_bytes(size: [u32; 2], tile: u32, bpp: u64) -> u64 {
     total
 }
 
+/// GPU bytes of a display texture set for a clipped viewport region `clip` ([cx0, cy0, cx1, cy1])
+/// on a `size` canvas in `tile`-sided tiles of `bpp` bytes per texel with mip levels.
+pub fn clipped_canvas_bytes(clip: [u32; 4], size: [u32; 2], tile: u32, bpp: u64) -> u64 {
+    let tile = tile.max(1);
+    let [cx0, cy0, cx1, cy1] = clip;
+    let mut total = 0u64;
+    for ty in (0..size[1]).step_by(tile as usize) {
+        for tx in (0..size[0]).step_by(tile as usize) {
+            let (w, h) = (tile.min(size[0] - tx), tile.min(size[1] - ty));
+            if tx + w <= cx0 || tx >= cx1 || ty + h <= cy0 || ty >= cy1 {
+                continue;
+            }
+            let one = (0..mip_count(w, h))
+                .map(|l| u64::from((w >> l).max(1)) * u64::from((h >> l).max(1)) * bpp)
+                .fold(0, u64::saturating_add);
+            total = total.saturating_add(one);
+        }
+    }
+    total
+}
+
 /// Physical memory of this machine in bytes, if known. `PHOTOCRAFT_RAM_MB` overrides it (to
 /// simulate a smaller machine).
 pub fn physical_memory() -> Option<u64> {

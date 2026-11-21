@@ -199,6 +199,29 @@ mod app_runner {
 
             // Apply mobile responsive layout adaptation before logic pass.
             self.responsive.adapt(&mut self.inner, ctx);
+
+            // Synchronize Safe Area & IME Insets into egui context
+            let insets = crate::responsive::SafeAreaInsets::current();
+            photocraft_ui_egui::safe_area::set_safe_area_insets(
+                ctx,
+                photocraft_ui_egui::safe_area::SafeAreaInsets {
+                    left: insets.left,
+                    top: insets.top,
+                    right: insets.right,
+                    bottom: insets.bottom,
+                    ime: insets.ime,
+                },
+            );
+            if insets.ime == 0.0
+                && self.ime.keyboard_visible
+                && !ctx.egui_wants_keyboard_input()
+                && self.inner.ui.text_edit.is_none()
+                && ctx.memory(|m| m.focused()).is_none()
+            {
+                self.ime.keyboard_visible = false;
+                self.inner.ui.shell.soft_keyboard_requested = false;
+            }
+
             self.inner.logic(ctx, frame);
         }
 
@@ -218,7 +241,13 @@ mod app_runner {
 
             // Synchronize Android virtual keyboard (IME) input into egui raw_input.events
             let has_type_edit = self.inner.ui.text_edit.is_some();
-            self.ime.sync(&self.android_app, ctx, raw_input, has_type_edit);
+            self.ime.sync(
+                &self.android_app,
+                ctx,
+                raw_input,
+                has_type_edit,
+                &mut self.inner.ui.shell,
+            );
 
             self.inner.raw_input_hook(ctx, raw_input);
         }
@@ -234,6 +263,16 @@ mod app_runner {
             }
 
             let insets = crate::responsive::SafeAreaInsets::current();
+            photocraft_ui_egui::safe_area::set_safe_area_insets(
+                ui.ctx(),
+                photocraft_ui_egui::safe_area::SafeAreaInsets {
+                    left: insets.left,
+                    top: insets.top,
+                    right: insets.right,
+                    bottom: insets.bottom,
+                    ime: insets.ime,
+                },
+            );
             let tokens = photocraft_ui_egui::theme::Tokens::get(ui.ctx());
             let chrome_fill = tokens.chrome;
 
@@ -246,8 +285,14 @@ mod app_runner {
                     .show(ui, |_| {});
             }
 
-            // 2. Bottom Safe Area (System navigation bar)
-            if insets.bottom > 0.0 {
+            // 2. Bottom Area: Soft Keyboard Reserve (when IME is active) OR System Navigation Bar
+            if insets.ime > 0.0 {
+                egui::Panel::bottom("android_ime_reserve")
+                    .exact_size(insets.ime)
+                    .resizable(false)
+                    .frame(egui::Frame::NONE.fill(egui::Color32::TRANSPARENT))
+                    .show(ui, |_| {});
+            } else if insets.bottom > 0.0 {
                 egui::Panel::bottom("android_safe_bottom")
                     .exact_size(insets.bottom)
                     .resizable(false)

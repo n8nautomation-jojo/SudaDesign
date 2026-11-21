@@ -607,3 +607,59 @@ fn psd_16bit_layers_with_compatibility_section_open_visible() {
     assert!(imported.layers[0].surface().unwrap().tile_count() > 0);
     assert!(imported.layers[1].surface().unwrap().tile_count() > 0);
 }
+
+#[test]
+fn exported_psd_all_layer_tagged_blocks_are_four_byte_aligned() {
+    use photocraft_color::{ColorMode, SampleType};
+    use photocraft_doc::{Document, Layer, LayerContent, TextLayer};
+    use photocraft_geom::Size;
+    use photocraft_psd::PsdFile;
+
+    // 1. Multi-feature document (exercising adjustment, fill, and group layers).
+    let d = gen_doc(ColorMode::Rgb, SampleType::U8, Features::ALL);
+    let r = export(&d, "gen.psd", &ExportOptions::default()).unwrap();
+    let psd = PsdFile::from_bytes(&r.bytes).expect("exported PSD must parse cleanly");
+    for (i, layer) in psd.layers().iter().enumerate() {
+        for b in &layer.blocks {
+            assert_eq!(
+                b.data.len() % 4,
+                0,
+                "layer #{i} '{}', block '{}' length {} is not a multiple of 4 (Photoshop extra data alignment)",
+                String::from_utf8_lossy(&layer.name),
+                b.key_str(),
+                b.data.len()
+            );
+        }
+    }
+    // Round-trip import back into photocraft doc model
+    let imported = import("gen.psd", &r.bytes).expect("roundtrip import must succeed");
+    assert_eq!(imported.document.layers.len(), d.layers.len());
+
+    // 2. Document with Arabic text (exercising Type tool EngineData alignment).
+    let mut doc = Document::new("ArabicDoc", Size::new(500, 300), ColorMode::Rgb, SampleType::U8);
+    let bg = raster("Background", doc.pixel_format(), doc.bounds(), 1, false);
+    doc.layers.push(bg);
+
+    let text_layer = TextLayer {
+        text: "مرحبا بك في سودا ديزاين".into(),
+        shape: photocraft_doc::text::TextShape::Box { x: 50.0, y: 50.0, width: 400.0, height: 100.0 },
+        ..Default::default()
+    };
+    doc.layers.push(Layer::new("ArabicText", LayerContent::Text(text_layer)));
+    let r_arabic = export(&doc, "arabic.psd", &ExportOptions::default()).unwrap();
+    let psd_arabic = PsdFile::from_bytes(&r_arabic.bytes).expect("exported Arabic PSD must parse cleanly");
+    for (i, layer) in psd_arabic.layers().iter().enumerate() {
+        for b in &layer.blocks {
+            assert_eq!(
+                b.data.len() % 4,
+                0,
+                "Arabic doc layer #{i} '{}', block '{}' length {} is not a multiple of 4",
+                String::from_utf8_lossy(&layer.name),
+                b.key_str(),
+                b.data.len()
+            );
+        }
+    }
+    let imported_arabic = import("arabic.psd", &r_arabic.bytes).expect("roundtrip Arabic import must succeed");
+    assert_eq!(imported_arabic.document.layers.len(), 2);
+}

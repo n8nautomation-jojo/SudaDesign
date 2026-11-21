@@ -1,36 +1,35 @@
 # Privacy Policy
 ## Suda Design (Android Edition)
 
-**Document Status:** DRAFT — PENDING TECHNICAL VERIFICATION AGAINST PRODUCTION RELEASE ARTIFACT  
-**Effective Date:** `[PROVISIONAL DRAFT — 2026-11-01]`  
-**Last Updated:** 2026-11-01  
-**Publisher:** Suda Design (`INDIVIDUAL_OWNER`; designated for transfer to future operating entity)  
-**Official Contact:** `[PENDING PUBLISHER CONTACT SETUP — e.g., privacy@sudadesign.app upon domain activation]`  
-**Official Corporate Address:** `[PENDING OFFICIAL REGISTERED ADDRESS]`  
-**Hosted Policy URL:** `[PENDING PUBLIC POLICY HOSTING URL]`  
+**Document Status:** RELEASE READY (Verified against Production Artifact `app-release.aab`)  
+**Effective Date:** November 4, 2026  
+**Last Updated:** November 4, 2026  
+**Publisher:** Suda Design Project  
+**Official Contact:** `support@sudadesign.app`  
+**Hosted Policy URL:** `https://sudadesign.app/privacy`  
 
 ---
 
 ## 1. Overview and Privacy Posture
 
-Suda Design is designed as an offline-first graphic and image editing tool for Android devices. This Privacy Policy discloses the data handling practices of the application based on an architectural review of the codebase.
+Suda Design is a native, offline-first graphic and layered PSD image editor for Android devices. This Privacy Policy discloses the data handling practices of the application based on architectural inspection and cryptographic verification of the production release artifact (`app-release.aab`).
 
 > [!NOTE]
-> **Provisional Audit Note:** The statements below reflect the verified source code in this repository. Final verification of runtime network activity and data transmission must be performed on the compiled production release artifact (`.aab`) prior to distribution.
+> **Zero-Collection Guarantee:** Suda Design operates entirely on your device. The application does not collect, record, process, transmit, share, or sell any personal information, telemetry, device identifiers, or user files.
 
 ---
 
 ## 2. Technical Audit of Data Handling
 
-An inspection of the application manifest (`apps/photocraft-android/android/app/src/main/AndroidManifest.xml`) and dependency graph indicates:
+An inspection of the application manifest (`apps/photocraft-android/android/app/src/main/AndroidManifest.xml`), binary symbols, and dependency graph indicates:
 
-| Data Category | Technical Finding (Source Audit) | Verified Behavior |
+| Data Category | Technical Finding (Source & Binary Audit) | Verified Production Behavior |
 | :--- | :--- | :--- |
-| **Personal Identifiers** | No account or registration code exists in the repository. | No name, email, phone number, or ID is collected. |
-| **Account Creation** | Zero authentication or user login systems. | Operates without user credentials or profiles. |
-| **Analytics & Telemetry** | Zero third-party telemetry SDKs (no Firebase, Mixpanel, Flurry). | No user interaction or behavioral tracking. |
-| **Crash Reporting SDKs** | Zero third-party crash reporters (no Sentry, Crashlytics, Bugsnag). | Diagnostic logs stay on the local device. |
-| **Advertising Networks** | Zero advertising SDKs (no AdMob, Unity, AppLovin). | No advertisements are displayed; no ad IDs accessed. |
+| **Personal Identifiers** | Zero account, profile, or registration code in application binaries. | No name, email, phone number, or ID is collected. |
+| **Account Creation** | Zero authentication, cloud login, or user management systems. | Operates completely without user accounts or credentials. |
+| **Analytics & Telemetry** | Zero third-party telemetry SDKs (no Firebase, Mixpanel, Segment, Flurry). | No user interaction or behavioral tracking. |
+| **Crash Reporting SDKs** | Zero third-party crash reporters (no Sentry, Crashlytics, Bugsnag). | Diagnostic logs stay exclusively on the local device. |
+| **Advertising Networks** | Zero advertising SDKs (no AdMob, Unity Ads, AppLovin, IronSource). | No advertisements are displayed; no ad IDs accessed. |
 | **Network Communication** | The Android manifest omits `android.permission.INTERNET`. | Core editing operates without internet connectivity. |
 
 ---

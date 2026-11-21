@@ -100,6 +100,18 @@ fn rail(app: &mut PhotocraftApp, ui: &mut egui::Ui, t: &Tokens) {
 /// The dock's narrowest width (points). It is the right dock, on the left in a right-to-left UI.
 pub(crate) const DOCK_MIN_WIDTH: f32 = 250.0;
 
+/// Dismisses all expanded dock groups on mobile viewports so the canvas reclaims 100% width.
+pub fn dismiss_mobile_dock(app: &mut PhotocraftApp) {
+    for g in crate::dock::Group::ALL {
+        app.ui.dock.set_collapsed(g, true);
+    }
+}
+
+/// Checks whether any dock group is currently expanded.
+pub fn is_any_dock_expanded(app: &PhotocraftApp) -> bool {
+    crate::dock::Group::ALL.iter().any(|g| g.shown(&app.ui.panels) && !app.ui.dock.is_collapsed(*g))
+}
+
 /// What the dock leaves the toolbar and the canvas when it is widest (points).
 const DOCK_LEAVES: f32 = 400.0;
 
@@ -153,7 +165,11 @@ pub(crate) fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate
         (Group::History, 0) => history(app, ui),
         (Group::History, 1) => crate::actions::panel(app, ui),
         (Group::History, _) => crate::comps_ui::panel(app, ui),
-        (Group::Layers, 0) => layers(app, ui),
+        (Group::Layers, 0) => {
+            if !crate::dialogs::is_mobile_screen(ui.ctx()) {
+                layers(app, ui);
+            }
+        }
         (Group::Layers, 1) => channels(app, ui),
         (Group::Layers, _) => crate::vector_ui::paths_panel(app, ui),
         (Group::Brushes, _) => crate::brushes_tab::show(app, ui),

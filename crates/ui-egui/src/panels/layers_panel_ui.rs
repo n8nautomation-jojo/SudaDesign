@@ -260,7 +260,8 @@ pub fn show_dialog(app: &mut PhotocraftApp, ctx: &Context) {
         LayersPanelDialog::NewGroup(_) => tl!("New Group"),
         LayersPanelDialog::LockLayers { .. } => tl!("Lock Layers"),
     };
-    egui::Modal::new(egui::Id::unique("layers-panel-options-modal")).show(ctx, |ui| {
+    let area = crate::safe_area::modal_area(ctx, egui::Id::unique("layers-panel-options-modal"));
+    egui::Modal::new(egui::Id::unique("layers-panel-options-modal")).area(area).show(ctx, |ui| {
         ui.set_width(if matches!(dialog, LayersPanelDialog::PanelOptions(_)) { 480.0 } else { 380.0 });
         ui.horizontal(|ui| {
             ui.heading(title);

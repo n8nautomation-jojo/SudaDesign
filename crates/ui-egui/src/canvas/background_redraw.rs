@@ -261,10 +261,22 @@ fn blocks(bounds: Rect) -> Vec<Rect> {
 }
 
 /// The order to draw `wanted` blocks in: those `visible` shows first, then the rest, each group
-/// nearest the view's centre first.
+/// nearest the view's centre first. On Android, blocks outside the visible frustum + 1-block margin
+/// are culled to prevent CPU thermal throttling and battery drain on large-scale canvases.
 fn order(blocks: &[Rect], wanted: impl Iterator<Item = usize>, visible: Rect) -> Vec<usize> {
     let (cx, cy) = ((visible.x0 as i64 + visible.x1 as i64) / 2, (visible.y0 as i64 + visible.y1 as i64) / 2);
-    let mut out: Vec<usize> = wanted.collect();
+    let margin = BLOCK;
+    let frustum = Rect::new(
+        visible.x0.saturating_sub(margin),
+        visible.y0.saturating_sub(margin),
+        visible.x1.saturating_add(margin),
+        visible.y1.saturating_add(margin),
+    );
+    let mut out: Vec<usize> = if cfg!(target_os = "android") && !visible.is_empty() {
+        wanted.filter(|&i| !blocks[i].intersect(&frustum).is_empty()).collect()
+    } else {
+        wanted.collect()
+    };
     out.sort_by_key(|&i| {
         let b = blocks[i];
         let (bx, by) = ((b.x0 as i64 + b.x1 as i64) / 2, (b.y0 as i64 + b.y1 as i64) / 2);
