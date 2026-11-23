@@ -60,7 +60,7 @@ pub fn render_reduced_damage(doc: &Document, w: u32, h: u32, damage: Rect) -> Bu
 /// [`render_reduced_rect`] (or, with `damage`, [`render_reduced_damage`]) of area `b` with an
 /// explicit band height (see [`render_bands`]).
 pub(crate) fn render_reduced_in_bands(doc: &Document, b: Rect, w: u32, h: u32, damage: Option<Rect>, band_rows: i32) -> Buffer {
-    let lod = crate::lod::LodLevel::select(b.width() as u32, b.height() as u32, w, h);
+    let lod = crate::lod::LodLevel::select(b.width(), b.height(), w, h);
     if lod.is_downscaled() && doc.size.area() > crate::lod::MIN_LOD_AREA && proxy::proxy_faithful(doc) && damage.is_none() {
         let proxy_doc = proxy::proxy_document(doc, lod.factor);
         let k = lod.factor as i32;
