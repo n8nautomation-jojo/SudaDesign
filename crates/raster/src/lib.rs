@@ -12,6 +12,9 @@ pub use interrupt::{Cancelled, Interrupt};
 
 pub(crate) mod tile_cache;
 pub(crate) mod cache_policy;
+pub mod telemetry;
+#[cfg(test)]
+mod tile_cache_regression_tests;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -427,40 +430,26 @@ impl Surface {
     }
 
     #[inline]
-    fn tile_bytes<'a>(&'a self, c: &TileCoord, temp: &'a mut Option<Tile>) -> Option<&'a [u8]> {
-        if let Some(t) = self.tiles.get(c) {
-            return Some(&t.data);
-        }
-        if let Some(ct) = self.compressed.get(c) {
-            let ct_ptr = Arc::as_ptr(ct) as usize;
-            // Check the LRU cache first to avoid re-decompressing.
-            let cached = self.cache
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(*c, ct_ptr);
-            if let Some(arc) = cached {
-                // Clone the Tile out of the Arc (cheap: Box<[u8]> clone).
-                if let Ok(cloned) = arc.try_clone() {
-                    *temp = Some(cloned);
-                    return temp.as_ref().map(|t| &t.data[..]);
-                }
+    fn tile_bytes<'a>(&'a self, c: &TileCoord, temp: &'a mut Option<Arc<Tile>>) -> Option<&'a [u8]> {
+        if let Some(t) = self.tiles.get(c) { return Some(&t.data); }
+        let compressed = self.compressed.get(c)?;
+        let identity = Arc::as_ptr(compressed) as usize;
+        // Keep an Arc alive during the borrowed read; never deep-clone a Box<[u8]>.
+        let cached = self.cache.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner).get(*c, identity);
+        let tile = match cached {
+            Some(tile) => { telemetry::cache_hit(); tile }
+            None => {
+                telemetry::cache_miss();
+                let tile = Arc::new(compressed.decompress().ok()?);
+                telemetry::decoded_bytes(tile.data.len());
+                self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(*c, identity, Arc::clone(&tile));
+                tile
             }
-            // Cache miss: decompress, populate cache, store in temp.
-            if let Ok(t) = ct.decompress() {
-                let arc = Arc::new(t);
-                self.cache
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(*c, ct_ptr, arc.clone());
-                // Try to avoid a second clone by try_unwrapping the Arc we
-                // just created (we hold the only strong reference here).
-                let tile = Arc::try_unwrap(arc)
-                    .unwrap_or_else(|a| (*a).clone());
-                *temp = Some(tile);
-                return temp.as_ref().map(|t| &t.data[..]);
-            }
-        }
-        None
+        };
+        *temp = Some(tile);
+        temp.as_ref().map(|tile| tile.data.as_ref())
     }
 
     /// Reads a region as encoded interleaved bytes with fallible allocation.
@@ -1036,6 +1025,7 @@ impl Surface {
         let dp = to_rgba(&fmt, self.default_samples(&mut stack, &mut heap));
         let dp8 = [q(dp[0]), q(dp[1]), q(dp[2]), q(dp[3])];
         let mut row = Vec::new();
+        let mut sample_scratch = Vec::new();
         for tc in r.tiles() {
             let tr = tc.rect().intersect(&r);
             let mut temp = None;
@@ -1052,9 +1042,11 @@ impl Surface {
                             *d = [s[0], s[1], s[2], s[3]];
                         }
                     }
-                    Some(_) => {
+                    Some(data) => {
                         row.resize(dst.len(), [0.0f32; 4]);
-                        self.read_rgba_into(Rect::new(tr.x0, y, tr.x1, y + 1), &mut row);
+                        let base = (((y - tc.ty * TILE_SIZE) as usize) * TILE_SIZE as usize
+                            + (tr.x0 - tc.tx * TILE_SIZE) as usize) * n;
+                        decode_tile_row_rgba(&fmt, data, base, &mut row, &mut sample_scratch);
                         for (d, p) in dst.iter_mut().zip(&row) {
                             *d = [q(p[0]), q(p[1]), q(p[2]), q(p[3])];
                         }
