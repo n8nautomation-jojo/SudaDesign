@@ -11,6 +11,9 @@ pub mod responsive;
 pub mod services;
 pub mod session_store;
 pub mod splash;
+mod checkpoint;
+mod checkpoint_worker;
+mod performance;
 
 #[cfg(target_os = "android")]
 mod app_runner {
@@ -25,6 +28,8 @@ mod app_runner {
     use crate::responsive::ResponsiveState;
     use crate::services;
     use crate::splash::SplashState;
+    use crate::checkpoint_worker::CheckpointWorker;
+    use crate::performance::MobilePerformance;
 
     /// Multi-touch gesture recognizer for mobile canvas workflows.
     /// Recognizes quick multi-finger taps:
@@ -107,6 +112,8 @@ mod app_runner {
         android_app: winit::platform::android::activity::AndroidApp,
         session_dir: PathBuf,
         last_periodic_save: std::time::Instant,
+        checkpoint_worker: Option<CheckpointWorker>,
+        performance: MobilePerformance,
     }
 
     impl AndroidPhotocraftApp {
@@ -124,8 +131,10 @@ mod app_runner {
                 touch_tracker: TouchGestureTracker::default(),
                 was_paused: false,
                 android_app,
-                session_dir,
+                session_dir: session_dir.clone(),
                 last_periodic_save: std::time::Instant::now(),
+                checkpoint_worker: CheckpointWorker::start(session_dir).ok(),
+                performance: MobilePerformance::default(),
             }
         }
     }
@@ -133,7 +142,11 @@ mod app_runner {
     impl App for AndroidPhotocraftApp {
         fn on_exit(&mut self) {
             log::info!("App on_exit: saving active session and preferences...");
-            let _ = crate::session_store::save_active_session(&mut self.inner, &self.session_dir);
+            let saved = self.checkpoint_worker.take()
+                .is_some_and(|worker| worker.finish(&self.inner).is_ok());
+            if !saved {
+                let _ = crate::session_store::save_active_session(&mut self.inner, &self.session_dir);
+            }
             let _ = self.inner.save_preferences();
             self.inner.on_exit();
         }
@@ -145,7 +158,11 @@ mod app_runner {
                 if !self.was_paused {
                     // Just transitioned to background: save active session & preferences, then purge transient caches
                     log::info!("App backgrounded: saving active session and preferences before RAM purge...");
-                    let _ = crate::session_store::save_active_session(&mut self.inner, &self.session_dir);
+                    if let Some(worker) = self.checkpoint_worker.as_ref() {
+                        worker.schedule(&self.inner);
+                    } else {
+                        let _ = crate::session_store::save_active_session(&mut self.inner, &self.session_dir);
+                    }
                     let _ = self.inner.save_preferences();
                     self.inner.purge_memory_under_pressure(60);
                     self.was_paused = true;
@@ -169,8 +186,11 @@ mod app_runner {
                 self.last_periodic_save = now;
                 let any_dirty = self.inner.session.documents().iter().any(|d| d.is_dirty());
                 if any_dirty {
-                    log::info!("Periodic autosave: persisting active session to prevent data loss...");
-                    let _ = crate::session_store::save_active_session(&mut self.inner, &self.session_dir);
+                    if let Some(worker) = self.checkpoint_worker.as_ref() {
+                        worker.schedule(&self.inner);
+                    } else {
+                        let _ = crate::session_store::save_active_session(&mut self.inner, &self.session_dir);
+                    }
                 }
             }
 
@@ -181,21 +201,7 @@ mod app_runner {
                 ctx.request_repaint();
             }
 
-            // Dynamic Thermal Management:
-            // Adjust frame rate cap based on Android PowerManager thermal status to prevent overheating.
-            let thermal = services::current_thermal_status();
-            if thermal >= 3 {
-                // Severe / Critical (status >= 3): limit frame rate to 20 fps (50ms per frame) to prevent SoC shutdown,
-                // and purge memory caches to reduce GPU/CPU load.
-                self.inner.min_frame_ms = Some(50.0);
-                self.inner.purge_memory_under_pressure(40);
-            } else if thermal == 2 {
-                // Moderate (status == 2): limit frame rate to 30 fps (33.3ms per frame) to cool down the phone.
-                self.inner.min_frame_ms = Some(33.3);
-            } else {
-                // Normal / Light (status <= 1): full performance, unconstrained frame rate.
-                self.inner.min_frame_ms = None;
-            }
+            self.performance.regulate_thermal(&mut self.inner, services::current_thermal_status());
 
             // Apply mobile responsive layout adaptation before logic pass.
             self.responsive.adapt(&mut self.inner, ctx);
@@ -223,6 +229,7 @@ mod app_runner {
             }
 
             self.inner.logic(ctx, frame);
+            self.performance.report_if_due(&self.inner);
         }
 
         fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {

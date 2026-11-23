@@ -9,7 +9,6 @@
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 
-use photocraft_format::{PcraftWriter, SaveOptions};
 use photocraft_ui_egui::PhotocraftApp;
 
 /// Metadata for a single document persisted in the active session.
@@ -39,82 +38,7 @@ pub struct SessionManifest {
 /// `session_manifest.json` atomically. Cleans up any removed document files.
 /// Returns the number of documents saved.
 pub fn save_active_session(app: &mut PhotocraftApp, session_dir: &Path) -> Result<usize, String> {
-    if let Err(e) = std::fs::create_dir_all(session_dir) {
-        log::error!("session_store: failed to create session dir {:?}: {e}", session_dir);
-        return Err(e.to_string());
-    }
-
-    let manifest_path = session_dir.join("session_manifest.json");
-    let docs = app.session.documents();
-    if docs.is_empty() {
-        // No open documents: remove manifest and old pcraft files so next launch starts clean.
-        if manifest_path.exists() {
-            let _ = std::fs::remove_file(&manifest_path);
-        }
-        cleanup_orphaned_files(session_dir, &[]);
-        log::info!("session_store: 0 open documents, session cleared");
-        return Ok(0);
-    }
-
-    let mut entries = Vec::with_capacity(docs.len());
-    let mut writer = PcraftWriter::new();
-    let opts = SaveOptions::default();
-
-    for st in docs {
-        let file_name = format!("doc_{}.pcraft", st.doc.id.0);
-        let doc_path = session_dir.join(&file_name);
-
-        match writer.save_path(&st.doc, &doc_path, &opts) {
-            Ok(_) => {
-                entries.push(SessionDocEntry {
-                    id: st.doc.id.0,
-                    name: st.doc.name.clone(),
-                    file_name,
-                    original_path: st.path.clone(),
-                    revision: st.revision,
-                    saved_revision: st.saved_revision,
-                    is_dirty: st.is_dirty(),
-                });
-            }
-            Err(e) => {
-                log::error!("session_store: failed to save doc {} ({}): {e}", st.doc.id.0, st.doc.name);
-            }
-        }
-    }
-
-    if entries.is_empty() {
-        return Err("Failed to save any open documents in session".to_string());
-    }
-
-    let active_index = app.session.active_index().unwrap_or(0);
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-
-    let manifest = SessionManifest {
-        version: 1,
-        active_index,
-        saved_at_epoch_ms: now_ms,
-        documents: entries.clone(),
-    };
-
-    let json_bytes = serde_json::to_vec_pretty(&manifest)
-        .map_err(|e| format!("Failed to serialize session manifest: {e}"))?;
-
-    photocraft_format::atomic_write(&manifest_path, &json_bytes)
-        .map_err(|e| format!("Failed to write session manifest: {e}"))?;
-
-    // Sweep old/closed .pcraft files
-    let keep_files: Vec<String> = entries.into_iter().map(|e| e.file_name).collect();
-    cleanup_orphaned_files(session_dir, &keep_files);
-
-    log::info!(
-        "session_store: successfully saved active session ({} docs, active: {})",
-        docs.len(),
-        active_index
-    );
-    Ok(docs.len())
+    crate::checkpoint::Checkpoint::capture(app).persist(session_dir)
 }
 
 /// Restore previously open designs from `session_dir` into `app.session`.
@@ -187,7 +111,7 @@ pub fn restore_session_if_present(app: &mut PhotocraftApp, session_dir: &Path) -
     restored_count
 }
 
-fn cleanup_orphaned_files(session_dir: &Path, keep_files: &[String]) {
+pub(crate) fn cleanup_orphaned_files(session_dir: &Path, keep_files: &[String]) {
     let Ok(entries) = std::fs::read_dir(session_dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
