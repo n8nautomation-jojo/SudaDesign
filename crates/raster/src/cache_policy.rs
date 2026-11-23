@@ -51,7 +51,8 @@ pub(crate) fn shrink_under_pressure(cache: &mut LruTileCache, level: i32) -> usi
 /// On Android we use a larger default because CMYK tiles are bigger and panning
 /// a 2 m × 1 m canvas stresses repeated decompression most.
 pub(crate) fn default_capacity() -> usize {
-    DEFAULT_CAPACITY_BYTES
+    // Per-surface interim Android cap; a process-wide budget remains future work.
+    if cfg!(target_os = "android") { MIN_CAPACITY_BYTES } else { DEFAULT_CAPACITY_BYTES }
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
