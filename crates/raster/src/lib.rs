@@ -1018,6 +1018,7 @@ impl Surface {
         let w = r.width() as usize;
         debug_assert_eq!(out.len(), w * r.height() as usize);
         let fmt = self.format;
+        let n = fmt.channels();
         let rgba8 = matches!((fmt.mode, fmt.sample, fmt.alpha), (ColorMode::Rgb, SampleType::U8, true));
         let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
         let mut stack = [0.0; 8];
